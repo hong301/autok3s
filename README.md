@@ -38,11 +38,11 @@ autok3s/
 git clone https://github.com/hong301/autok3s.git
 cd autok3s
 chmod +x auto_k3s.sh
-
+```
 2️⃣ 執行自動建構流程（在 Proxmox VE 上執行）
-
+```
 sudo ./auto_k3s_cluster.sh
-
+```
 
 🧪 建立結果
 建立 VM：
