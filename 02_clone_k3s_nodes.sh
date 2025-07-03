@@ -3,9 +3,9 @@
 
 set -e
 
-TEMPLATE_ID=9000
-BRIDGE="vmbr0"
-STORAGE="local-lvm"
+# 載入共用函數庫
+source "$(dirname "$0")/common_functions.sh"
+
 SSH_KEY_PATH="$HOME/.ssh/id_rsa.pub"
 PLAIN_PASSWORD="FsI!^@#Zg"  # 🔐 <<<<< 這裡改你想要的密碼
 HASHED_PASS=$(mkpasswd -m sha-512 "$PLAIN_PASSWORD")

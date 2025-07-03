@@ -1,38 +1,27 @@
 #!/bin/bash
-# 安裝 ELK Stack: Elasticsearch、Kibana、Filebeat 全部透過 elk-master（唯一 K3s 節點）部署
+# 安裝 ELK Stack: Elasticsearch、Kibana 在 K3s 集群中部署
 
 set -e
 
-MASTER_NAME="elk-master"
-AGENT_NAME="elk-agent"
+# 載入共用函數庫
+source "$(dirname "$0")/common_functions.sh"
 
-# 根據 VM 名稱查詢 IP
-get_ip_by_name() {
-  local name=$1
-  local vmid
-  vmid=$(qm list | awk -v name="$name" '$0 ~ name {print $1}')
-  [[ -z "$vmid" ]] && echo "" && return
-  qm guest cmd "$vmid" network-get-interfaces \
-    | jq -r '.[] | select(.name=="ens18") | .["ip-addresses"][]? | select(.["ip-address"] | test("^10\\.110\\.")) | .["ip-address"]' | head -n1
-}
-if ! command -v jq &> /dev/null; then
-  echo "❌ jq 未安裝，請先安裝 jq 工具"
+MASTER_VMID=101
+
+# 檢查必要工具
+check_required_tools
+
+# 取得 Master 節點 IP
+MASTER_IP=$(get_ip_by_vmid $MASTER_VMID)
+if [[ -z "$MASTER_IP" ]]; then
+  echo "❌ 無法取得 Master VM IP"
   exit 1
 fi
 
-MASTER_IP=$(get_ip_by_name "$MASTER_NAME")
-AGENT_IP=$(get_ip_by_name "$AGENT_NAME")
+echo "🌐 k3s-master IP: $MASTER_IP"
 
-if [[ -z "$MASTER_IP" || -z "$AGENT_IP" ]]; then
-  echo "❌ 無法取得 VM IP，請確認 qemu-guest-agent 有啟用"
-  exit 1
-fi
-
-echo "🌐 elk-master IP: $MASTER_IP"
-echo "🌐 elk-agent IP: $AGENT_IP"
-
-# 在 elk-master 上安裝 ELK Stack
-ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP <<'EOF'
+# 在 k3s-master 上安裝 ELK Stack
+ssh_exec "$MASTER_IP" ubuntu <<'EOF'
 set -e
 
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
@@ -62,12 +51,9 @@ sleep 60
 echo "🚀 安裝 Kibana..."
 helm upgrade --install kibana elastic/kibana -n logging \
   --set service.type=NodePort \
+  --set service.nodePort=30561 \
   --set env.ELASTICSEARCH_HOSTS=http://elasticsearch-master.logging.svc.cluster.local:9200
 
-echo "🚀 安裝 Filebeat..."
-helm upgrade --install filebeat elastic/filebeat -n logging \
-  --set daemonset.elasticsearch.hosts[0]="http://elasticsearch-master.logging.svc.cluster.local:9200"
-
-echo "✅ ELK Stack 安裝完成！"
+echo "✅ ELK Stack (E+K) 安裝完成！"
 kubectl get pods -n logging
 EOF
