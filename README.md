@@ -6,9 +6,10 @@
 
 - ☸️ **K3s 集群**: 1 Master + 3 Worker 節點
 - 🔍 **完整 ELK Stack**: Elasticsearch + Logstash + Kibana
-- 📊 **多層次監控**: Proxmox 主機 + K3s 容器
+- 📊 **多層次監控**: Proxmox 主機 + K3s 容器雙重監控
 - 🛡️ **安全審計**: Filebeat + Metricbeat + Auditbeat
 - 🔧 **模組化設計**: 可單獨執行或一鍵部署
+- 🚀 **DaemonSet 部署**: 每個節點自動部署監控代理
 
 ---
 
@@ -20,7 +21,7 @@ cd autok3s && chmod +x deploy_k3s_elk.sh
 sudo ./deploy_k3s_elk.sh
 ```
 
-**約 5-8 分鐘完成部署！**
+**約 8-10 分鐘完成部署！**
 
 ---
 
@@ -30,13 +31,16 @@ sudo ./deploy_k3s_elk.sh
 autok3s/
 ├── common_functions.sh           # 🔧 共用函數庫
 ├── 01_build_template.sh          # 🏗️ 建立 VM Template
-├── 02_clone_k3s_nodes.sh         # 🖥️ 建立 K3s 節點
+├── 02_clone_k3s_nodes.sh         # 🖥️ 建立 K3s 節點 (1M+3W)
 ├── 03_install_k3s.sh             # ☸️ 安裝 K3s Cluster
-├── 04_install_elk_stack.sh       # 🔍 安裝 E + K
+├── 04_install_elk_stack.sh       # 🔍 安裝 Elasticsearch + Kibana
 ├── 05_install_logstash.sh        # 🔄 安裝 Logstash
-├── 06_install_beats_on_proxmox.sh # 📊 Proxmox Beats
-├── 07_install_k3s_filebeat.sh    # 📝 K3s Filebeat
-└── deploy_k3s_elk.sh             # 🚀 **一鍵部署**
+├── 06_install_beats_on_proxmox.sh # 📊 Proxmox 主機 Beats
+├── 07_install_k3s_filebeat.sh    # 📝 K3s Filebeat DaemonSet
+├── 08_install_k3s_metricbeat.sh  # 📈 K3s Metricbeat DaemonSet
+├── deploy_k3s_elk.sh             # 🚀 **一鍵部署腳本**
+├── meta-data & user-data         # Cloud-init 設定檔
+└── README.md                     # 📖 專案說明
 ```
 
 ---
@@ -50,97 +54,181 @@ autok3s/
 │                     │                       │
 │  ┌─────────────────┼─────────────────────┐  │
 │  │            K3s Cluster                │  │
+│  │   (1 Master + 3 Worker)               │  │
 │  │                                       │  │
 │  │  📝 Filebeat → 🔄 Logstash → 🔍 ES   │  │
-│  │                      ↓                │  │
+│  │  📈 Metricbeat ↗     ↓                │  │
 │  │                 📊 Kibana             │  │
 │  └───────────────────────────────────────┘  │
 └─────────────────────────────────────────────┘
 ```
 
+**監控資料流向**:
+- **Proxmox 主機**: 系統日誌/指標 → Logstash → Elasticsearch
+- **K3s 容器**: 容器日誌/指標 → Logstash → Elasticsearch
+- **Kibana**: 視覺化所有監控資料
+
 ---
 
 ## 🌐 服務連接
 
-| 服務           | 連接埠  | URL 範例                          |
-|----------------|---------|-----------------------------------|
-| Kibana         | 30561   | http://\<Master_IP\>:30561       |
-| Elasticsearch  | 30920   | http://\<Master_IP\>:30920       |
-| Logstash       | 30544   | \<Master_IP\>:30544               |
+| 服務           | 連接埠  | URL 範例                          | 功能                    |
+|----------------|---------|-----------------------------------|-------------------------|
+| Kibana         | 30561   | http://\<Master_IP\>:30561       | 資料視覺化與查詢         |
+| Elasticsearch  | 30920   | http://\<Master_IP\>:30920       | 資料儲存與搜尋           |
+| Logstash       | 30544   | \<Master_IP\>:30544               | 資料處理與轉換           |
 
 ---
 
 ## 📊 Index Patterns
 
 在 Kibana 中建立以下 Index Pattern：
+
+### 📋 Proxmox 主機監控
 - `filebeat-proxmox-*` - Proxmox 系統日誌
 - `metricbeat-proxmox-*` - Proxmox 系統指標  
 - `auditbeat-proxmox-*` - Proxmox 安全審計
+
+### 📋 K3s 集群監控
 - `k3s-logs-*` - K3s 容器日誌
+- `k3s-metrics-*` - K3s 系統指標
+
+**🔍 推薦儀表板**: 可匯入 Elastic 官方儀表板模板進行快速視覺化
 
 ---
 
-## 🔧 分步驟部署
+## 🔧 部署步驟詳解
 
+### 🚀 一鍵部署
 ```bash
-./01_build_template.sh          # 建立 Template
-./02_clone_k3s_nodes.sh         # 建立 VM
-./03_install_k3s.sh             # 安裝 K3s
-./04_install_elk_stack.sh       # 安裝 E+K
-./05_install_logstash.sh        # 安裝 Logstash
-./07_install_k3s_filebeat.sh    # K3s Filebeat
-./06_install_beats_on_proxmox.sh # Proxmox Beats
+sudo ./deploy_k3s_elk.sh
 ```
+
+### 🔧 分步驟執行
+```bash
+# 步驟 1: 建立 VM Template
+sudo ./01_build_template.sh
+
+# 步驟 2: 建立 K3s 節點 (1M+3W)  
+sudo ./02_clone_k3s_nodes.sh
+
+# 步驟 3: 安裝 K3s 集群
+sudo ./03_install_k3s.sh
+
+# 步驟 4: 安裝 Elasticsearch + Kibana
+sudo ./04_install_elk_stack.sh
+
+# 步驟 5: 安裝 Logstash
+sudo ./05_install_logstash.sh
+
+# 步驟 6: 安裝 K3s Filebeat (DaemonSet)
+sudo ./07_install_k3s_filebeat.sh
+
+# 步驟 7: 安裝 K3s Metricbeat (DaemonSet)
+sudo ./08_install_k3s_metricbeat.sh
+
+# 步驟 8: 安裝 Proxmox 主機 Beats
+sudo ./06_install_beats_on_proxmox.sh
+```
+
+每個步驟都會顯示執行進度和階段完成狀態。
 
 ---
 
 ## 🛠️ 環境需求
 
-- ✅ Proxmox VE (已設定 local-lvm 儲存)
-- ✅ 網路連線 (下載套件和映像)
-- ✅ SSH 金鑰: `~/.ssh/id_rsa.pub`
-- ✅ Root 權限或 sudo
+### 📋 硬體需求
+- **CPU**: 最少 8 核心 (推薦 12+ 核心)
+- **記憶體**: 最少 16GB (推薦 32GB+)
+- **儲存**: 最少 100GB 可用空間
+- **網路**: 穩定的網路連線
+
+### 📋 軟體需求
+- ✅ **Proxmox VE** (已設定 local-lvm 儲存)
+- ✅ **SSH 金鑰**: `~/.ssh/id_rsa.pub`
+- ✅ **Root 權限** 或 sudo 存取
+- ✅ **網路連線** (下載套件和映像)
+
+### 📋 VM 資源配置
+- **Master**: 4 CPU, 8GB RAM, 32GB 儲存
+- **Worker**: 2 CPU, 4GB RAM, 32GB 儲存
+- **總計**: 10 CPU, 20GB RAM, 128GB 儲存
 
 ---
 
 ## 🔧 故障排除
 
-### VM 無法取得 IP
+### 🔍 VM 無法取得 IP
 ```bash
+# 檢查 guest-agent 狀態
 qm guest cmd <VMID> qemu-agent-command --command '{"execute": "guest-ping"}'
-ssh ubuntu@<VM_IP> "sudo systemctl start qemu-guest-agent"
+
+# 重啟 guest-agent
+ssh ubuntu@<VM_IP> "sudo systemctl restart qemu-guest-agent"
 ```
 
-### K3s 問題
+### 🔍 K3s 問題
 ```bash
+# 檢查 K3s 狀態
 ssh ubuntu@<Master_IP> "sudo systemctl status k3s"
 ssh ubuntu@<Master_IP> "sudo journalctl -u k3s -f"
+
+# 檢查節點狀態
+ssh ubuntu@<Master_IP> "kubectl get nodes -o wide"
 ```
 
-### ELK 問題
+### 🔍 ELK 問題
 ```bash
+# 檢查 Pod 狀態
 ssh ubuntu@<Master_IP> "kubectl get pods -n logging"
 ssh ubuntu@<Master_IP> "kubectl logs -n logging <pod-name>"
+
+# 檢查 Elasticsearch 索引
 curl -X GET "http://<Master_IP>:30920/_cat/indices?v"
+
+# 檢查 Kibana 連線
+curl -X GET "http://<Master_IP>:30561/api/status"
 ```
 
-### 清理環境
+### 🔍 Beats 問題
+```bash
+# 檢查 Proxmox 主機 Beats 狀態
+systemctl status filebeat metricbeat auditbeat
+
+# 檢查 K3s DaemonSet 狀態
+ssh ubuntu@<Master_IP> "kubectl get ds -n logging"
+```
+
+### 🧹 清理環境
 ```bash
 # 刪除所有 VM
 for vmid in 101 102 103 104 9000; do qm destroy $vmid --purge; done
+
+# 清理下載的映像
 rm -f /var/lib/vz/template/iso/ubuntu-*
+
+# 清理 SSH known_hosts
+ssh-keygen -R <VM_IP>
 ```
 
 ---
 
 ## 🎯 延伸功能
 
+### 🔒 安全增強
 - [ ] X-Pack Security (用戶認證)
 - [ ] HTTPS/TLS 加密
+- [ ] 網路隔離與防火牆
+
+### 📊 監控增強
 - [ ] Grafana 整合
-- [ ] 自動告警
-- [ ] 資料生命週期管理
+- [ ] 自動告警 (Watcher)
+- [ ] 效能調優
+
+### 🔧 營運增強
+- [ ] 資料生命週期管理 (ILM)
 - [ ] 多節點 Elasticsearch
+- [ ] 備份與災難恢復
 
 ---
 

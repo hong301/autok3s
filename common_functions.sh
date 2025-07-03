@@ -9,9 +9,22 @@ ISO_DIR="/var/lib/vz/template/iso"
 
 # 檢查必要工具
 check_required_tools() {
+  # 檢查 jq
   if ! command -v jq &> /dev/null; then
     echo "❌ jq 未安裝，請先安裝 jq 工具"
     exit 1
+  fi
+  
+  # 檢查 mkpasswd (用於密碼哈希)
+  if ! command -v mkpasswd &> /dev/null; then
+    echo "📦 安裝 whois 套件 (包含 mkpasswd)..."
+    apt-get update && apt-get install -y whois
+  fi
+  
+  # 檢查 wget
+  if ! command -v wget &> /dev/null; then
+    echo "📦 安裝 wget..."
+    apt-get update && apt-get install -y wget
   fi
 }
 

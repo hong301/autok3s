@@ -6,6 +6,9 @@ set -e
 # 載入共用函數庫
 source "$(dirname "$0")/common_functions.sh"
 
+echo "🚀 執行階段：03_install_k3s.sh - 安裝 K3s 集群"
+echo "================================================="
+
 MASTER_VMID=101
 WORKER_VMIDS=(102 103 104)
 
@@ -57,3 +60,6 @@ echo "🔗 使用 kubectl 連接到 K3s Cluster:"
 echo "  kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes"
 echo "📦 若需本機操作:"
 echo "  scp ubuntu@$MASTER_IP:/etc/rancher/k3s/k3s.yaml ~/.kube/config"
+
+echo "✅ 階段完成：03_install_k3s.sh"
+echo ""

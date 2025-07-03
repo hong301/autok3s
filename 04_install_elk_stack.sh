@@ -6,6 +6,9 @@ set -e
 # 載入共用函數庫
 source "$(dirname "$0")/common_functions.sh"
 
+echo "🚀 執行階段：04_install_elk_stack.sh - 安裝 Elasticsearch + Kibana"
+echo "================================================="
+
 MASTER_VMID=101
 
 # 檢查必要工具
@@ -57,3 +60,6 @@ helm upgrade --install kibana elastic/kibana -n logging \
 echo "✅ ELK Stack (E+K) 安裝完成！"
 kubectl get pods -n logging
 EOF
+
+echo "✅ 階段完成：04_install_elk_stack.sh"
+echo ""

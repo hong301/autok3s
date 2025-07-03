@@ -6,8 +6,22 @@ set -e
 # 載入共用函數庫
 source "$(dirname "$0")/common_functions.sh"
 
+echo "🚀 執行階段：02_clone_k3s_nodes.sh - 複製並建立 K3s 節點"
+echo "================================================="
+
+# 檢查必要工具
+check_required_tools
+
 SSH_KEY_PATH="$HOME/.ssh/id_rsa.pub"
 PLAIN_PASSWORD="FsI!^@#Zg"  # 🔐 <<<<< 這裡改你想要的密碼
+
+# 檢查 SSH 金鑰是否存在
+if [[ ! -f "$SSH_KEY_PATH" ]]; then
+  echo "❌ SSH 金鑰不存在: $SSH_KEY_PATH"
+  echo "💡 請先生成 SSH 金鑰: ssh-keygen -t rsa -b 4096"
+  exit 1
+fi
+
 HASHED_PASS=$(mkpasswd -m sha-512 "$PLAIN_PASSWORD")
 
 echo "🔐 使用固定密碼：$PLAIN_PASSWORD"
@@ -56,3 +70,6 @@ for ENTRY in "${VM_LIST[@]}"; do
     echo "❌ VM $VMID ($NAME) guest-agent 未啟用，請手動安裝與啟動"
   fi
 done
+
+echo "✅ 階段完成：02_clone_k3s_nodes.sh"
+echo ""

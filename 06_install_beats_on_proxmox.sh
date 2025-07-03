@@ -6,6 +6,9 @@ set -e
 # 載入共用函數庫
 source "$(dirname "$0")/common_functions.sh"
 
+echo "🚀 執行階段：06_install_beats_on_proxmox.sh - 在 Proxmox 主機安裝 Beats"
+echo "================================================="
+
 MASTER_VMID=101
 
 # 檢查必要工具
@@ -237,3 +240,6 @@ echo "📊 索引資訊："
 echo "  • Proxmox 日誌: filebeat-proxmox-YYYY.MM.DD"
 echo "  • Proxmox 指標: metricbeat-proxmox-YYYY.MM.DD"
 echo "  • Proxmox 安全: auditbeat-proxmox-YYYY.MM.DD"
+
+echo "✅ 階段完成：06_install_beats_on_proxmox.sh"
+echo ""

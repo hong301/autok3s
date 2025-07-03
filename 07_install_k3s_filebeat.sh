@@ -6,6 +6,9 @@ set -e
 # 載入共用函數庫
 source "$(dirname "$0")/common_functions.sh"
 
+echo "🚀 執行階段：07_install_k3s_filebeat.sh - 在 K3s 安裝 Filebeat"
+echo "================================================="
+
 MASTER_VMID=101
 
 # 檢查必要工具
@@ -80,3 +83,6 @@ echo ""
 echo "📊 資料收集："
 echo "  • K3s 容器日誌 → Logstash → Elasticsearch"
 echo "  • K3s 系統日誌 → Logstash → Elasticsearch"
+
+echo "✅ 階段完成：07_install_k3s_filebeat.sh"
+echo ""

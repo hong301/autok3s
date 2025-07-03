@@ -6,6 +6,9 @@ set -e
 # 載入共用函數庫
 source "$(dirname "$0")/common_functions.sh"
 
+echo "🚀 執行階段：05_install_logstash.sh - 安裝 Logstash"
+echo "================================================="
+
 MASTER_VMID=101
 
 # 檢查必要工具
@@ -286,3 +289,9 @@ echo "🔧 下一步："
 echo "  1. 更新 Beats 配置指向 Logstash"
 echo "  2. 檢查 Logstash 日誌確認資料處理正常"
 echo "  3. 在 Kibana 中查看處理後的索引"
+
+echo "✅ 階段完成：05_install_logstash.sh"
+echo ""
+
+echo "✅ 階段完成：05_install_logstash.sh"
+echo ""
