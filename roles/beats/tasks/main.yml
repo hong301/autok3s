@@ -1,0 +1,331 @@
+# 📊 Beats (K3s DaemonSet) 部署任務
+---
+- name: "📊 部署 Beats DaemonSet"
+  debug:
+    msg: "開始部署 Filebeat 和 Metricbeat DaemonSet..."
+
+# Filebeat DaemonSet
+- name: "📝 部署 Filebeat DaemonSet"
+  k8s:
+    state: present
+    kubeconfig: "{{ ansible_env.HOME }}/.kube/config"
+    definition:
+      apiVersion: apps/v1
+      kind: DaemonSet
+      metadata:
+        name: filebeat
+        namespace: "{{ elk.namespace }}"
+      spec:
+        selector:
+          matchLabels:
+            app: filebeat
+        template:
+          metadata:
+            labels:
+              app: filebeat
+          spec:
+            serviceAccountName: filebeat
+            terminationGracePeriodSeconds: 30
+            containers:
+            - name: filebeat
+              image: "docker.elastic.co/beats/filebeat:{{ beats.version }}"
+              args: [
+                "-c", "/etc/filebeat.yml",
+                "-e"
+              ]
+              env:
+              - name: LOGSTASH_HOSTS
+                value: "logstash:5044"
+              - name: NODE_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: spec.nodeName
+              volumeMounts:
+              - name: config
+                mountPath: /etc/filebeat.yml
+                readOnly: true
+                subPath: filebeat.yml
+              - name: varlibdockercontainers
+                mountPath: /var/lib/docker/containers
+                readOnly: true
+              - name: varlog
+                mountPath: /var/log
+                readOnly: true
+              securityContext:
+                runAsUser: 0
+            volumes:
+            - name: config
+              configMap:
+                defaultMode: 0640
+                name: filebeat-config
+            - name: varlibdockercontainers
+              hostPath:
+                path: /var/lib/docker/containers
+            - name: varlog
+              hostPath:
+                path: /var/log
+
+# Filebeat ConfigMap
+- name: "📝 建立 Filebeat ConfigMap"
+  k8s:
+    state: present
+    kubeconfig: "{{ ansible_env.HOME }}/.kube/config"
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: filebeat-config
+        namespace: "{{ elk.namespace }}"
+      data:
+        filebeat.yml: |
+          filebeat.inputs:
+          - type: container
+            paths:
+              - /var/log/containers/*.log
+            processors:
+              - add_kubernetes_metadata:
+                  host: ${NODE_NAME}
+                  matchers:
+                  - logs_path:
+                      logs_path: "/var/log/containers/"
+          
+          fields:
+            log_type: k3s
+          fields_under_root: false
+          
+          output.logstash:
+            hosts: ["${LOGSTASH_HOSTS}"]
+          
+          logging.level: info
+
+# Filebeat ServiceAccount
+- name: "🔑 建立 Filebeat ServiceAccount"
+  k8s:
+    state: present
+    kubeconfig: "{{ ansible_env.HOME }}/.kube/config"
+    definition:
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: filebeat
+        namespace: "{{ elk.namespace }}"
+
+# Filebeat ClusterRole
+- name: "🔑 建立 Filebeat ClusterRole"
+  k8s:
+    state: present
+    kubeconfig: "{{ ansible_env.HOME }}/.kube/config"
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: filebeat
+      rules:
+      - apiGroups: [""]
+        resources:
+          - nodes
+          - namespaces
+          - pods
+        verbs: ["get", "list", "watch"]
+
+# Filebeat ClusterRoleBinding
+- name: "🔑 建立 Filebeat ClusterRoleBinding"
+  k8s:
+    state: present
+    kubeconfig: "{{ ansible_env.HOME }}/.kube/config"
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: filebeat
+      subjects:
+      - kind: ServiceAccount
+        name: filebeat
+        namespace: "{{ elk.namespace }}"
+      roleRef:
+        kind: ClusterRole
+        name: filebeat
+        apiGroup: rbac.authorization.k8s.io
+
+# Metricbeat DaemonSet
+- name: "📈 部署 Metricbeat DaemonSet"
+  k8s:
+    state: present
+    kubeconfig: "{{ ansible_env.HOME }}/.kube/config"
+    definition:
+      apiVersion: apps/v1
+      kind: DaemonSet
+      metadata:
+        name: metricbeat
+        namespace: "{{ elk.namespace }}"
+      spec:
+        selector:
+          matchLabels:
+            app: metricbeat
+        template:
+          metadata:
+            labels:
+              app: metricbeat
+          spec:
+            serviceAccountName: metricbeat
+            terminationGracePeriodSeconds: 30
+            hostNetwork: true
+            dnsPolicy: ClusterFirstWithHostNet
+            containers:
+            - name: metricbeat
+              image: "docker.elastic.co/beats/metricbeat:{{ beats.version }}"
+              args: [
+                "-c", "/etc/metricbeat.yml",
+                "-e",
+                "-system.hostfs=/hostfs"
+              ]
+              env:
+              - name: LOGSTASH_HOSTS
+                value: "logstash:5044"
+              - name: NODE_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: spec.nodeName
+              volumeMounts:
+              - name: config
+                mountPath: /etc/metricbeat.yml
+                readOnly: true
+                subPath: metricbeat.yml
+              - name: proc
+                mountPath: /hostfs/proc
+                readOnly: true
+              - name: cgroup
+                mountPath: /hostfs/sys/fs/cgroup
+                readOnly: true
+              securityContext:
+                runAsUser: 0
+            volumes:
+            - name: config
+              configMap:
+                defaultMode: 0640
+                name: metricbeat-config
+            - name: proc
+              hostPath:
+                path: /proc
+            - name: cgroup
+              hostPath:
+                path: /sys/fs/cgroup
+
+# Metricbeat ConfigMap
+- name: "📈 建立 Metricbeat ConfigMap"
+  k8s:
+    state: present
+    kubeconfig: "{{ ansible_env.HOME }}/.kube/config"
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: metricbeat-config
+        namespace: "{{ elk.namespace }}"
+      data:
+        metricbeat.yml: |
+          metricbeat.config.modules:
+            path: ${path.config}/modules.d/*.yml
+            reload.enabled: false
+          
+          metricbeat.modules:
+          - module: system
+            metricsets:
+              - cpu
+              - memory
+              - network
+              - filesystem
+            enabled: true
+            period: 10s
+            processes: ['.*']
+            cpu.metrics:  ["percentages", "normalized_percentages"]
+            core.metrics: ["percentages"]
+          
+          - module: kubernetes
+            metricsets:
+              - node
+              - system
+              - pod
+              - container
+            period: 10s
+            host: ${NODE_NAME}
+            hosts: ["https://${NODE_NAME}:10250"]
+            bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+            ssl.verification_mode: "none"
+          
+          fields:
+            log_type: k3s
+          fields_under_root: false
+          
+          output.logstash:
+            hosts: ["${LOGSTASH_HOSTS}"]
+          
+          logging.level: info
+
+# Metricbeat ServiceAccount
+- name: "🔑 建立 Metricbeat ServiceAccount"
+  k8s:
+    state: present
+    kubeconfig: "{{ ansible_env.HOME }}/.kube/config"
+    definition:
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: metricbeat
+        namespace: "{{ elk.namespace }}"
+
+# Metricbeat ClusterRole
+- name: "🔑 建立 Metricbeat ClusterRole"
+  k8s:
+    state: present
+    kubeconfig: "{{ ansible_env.HOME }}/.kube/config"
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: metricbeat
+      rules:
+      - apiGroups: [""]
+        resources:
+          - nodes
+          - namespaces
+          - events
+          - pods
+        verbs: ["get", "list", "watch"]
+      - apiGroups: ["extensions"]
+        resources:
+          - replicasets
+        verbs: ["get", "list", "watch"]
+      - apiGroups: ["apps"]
+        resources:
+          - statefulsets
+          - deployments
+          - replicasets
+        verbs: ["get", "list", "watch"]
+      - apiGroups: [""]
+        resources:
+          - nodes/stats
+        verbs: ["get"]
+
+# Metricbeat ClusterRoleBinding
+- name: "🔑 建立 Metricbeat ClusterRoleBinding"
+  k8s:
+    state: present
+    kubeconfig: "{{ ansible_env.HOME }}/.kube/config"
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: metricbeat
+      subjects:
+      - kind: ServiceAccount
+        name: metricbeat
+        namespace: "{{ elk.namespace }}"
+      roleRef:
+        kind: ClusterRole
+        name: metricbeat
+        apiGroup: rbac.authorization.k8s.io
+
+- name: "✅ Beats DaemonSet 部署完成"
+  debug:
+    msg: "Filebeat 和 Metricbeat DaemonSet 已成功部署到所有節點"

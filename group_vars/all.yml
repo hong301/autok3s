@@ -1,0 +1,79 @@
+# ☸️ Auto K3s + ELK Cluster - Ansible Variables
+# ==============================================
+
+# 🔧 Proxmox VE 配置
+proxmox:
+  api_host: "{{ proxmox_host }}"
+  api_user: "{{ proxmox_user }}"
+  api_password: "{{ proxmox_password }}"
+  node: "{{ ansible_hostname }}"
+  validate_certs: false
+
+# 📁 Cloud Image 配置
+ubuntu_image:
+  url: "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
+  filename: "ubuntu-22.04-server-cloudimg-amd64.img"
+  local_path: "/var/lib/vz/template/iso/ubuntu-22.04-server-cloudimg-amd64.img"
+
+# ☸️ K3s 集群配置
+k3s:
+  version: "{{ k3s_version }}"
+  token: "{{ k3s_token }}"
+  master_ip: ""  # 將在運行時動態填入
+  master_port: 6443
+  flannel_backend: "vxlan"
+  cluster_cidr: "10.42.0.0/16"
+  service_cidr: "10.43.0.0/16"
+  
+# 🔍 ELK Stack 配置
+elk:
+  namespace: "logging"
+  elasticsearch:
+    version: "{{ elasticsearch_version }}"
+    replicas: 1
+    storage_size: "20Gi"
+    memory_limit: "2Gi"
+    memory_request: "1Gi"
+    port: 30920
+    
+  kibana:
+    version: "{{ kibana_version }}"
+    port: 30561
+    memory_limit: "1Gi"
+    memory_request: "512Mi"
+    
+  logstash:
+    version: "{{ logstash_version }}"
+    port: 30544
+    memory_limit: "1Gi"
+    memory_request: "512Mi"
+
+# 📊 Beats 配置
+beats:
+  version: "{{ beats_version }}"
+  filebeat:
+    enabled: true
+    log_paths:
+      - "/var/log/*.log"
+      - "/var/log/syslog"
+      - "/var/log/auth.log"
+      
+  metricbeat:
+    enabled: true
+    modules:
+      - system
+      - docker
+      - kubernetes
+      
+  auditbeat:
+    enabled: true
+    
+# 🌐 網路配置  
+network:
+  bridge: "{{ bridge }}"
+  dns_servers: "{{ dns_servers }}"
+
+# 💾 儲存配置
+storage:
+  name: "{{ storage }}"
+  format: "raw"

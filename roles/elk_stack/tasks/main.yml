@@ -1,0 +1,151 @@
+# 🔍 ELK Stack 部署任務
+---
+- name: "🔍 部署 ELK Stack"
+  debug:
+    msg: "開始部署 Elasticsearch + Logstash + Kibana"
+
+- name: "📂 建立 logging namespace"
+  k8s:
+    name: "{{ elk.namespace }}"
+    api_version: v1
+    kind: Namespace
+    state: present
+    kubeconfig: "{{ ansible_env.HOME }}/.kube/config"
+
+- name: "🔍 部署 Elasticsearch"
+  k8s:
+    state: present
+    kubeconfig: "{{ ansible_env.HOME }}/.kube/config"
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: elasticsearch
+        namespace: "{{ elk.namespace }}"
+      spec:
+        replicas: "{{ elk.elasticsearch.replicas }}"
+        selector:
+          matchLabels:
+            app: elasticsearch
+        template:
+          metadata:
+            labels:
+              app: elasticsearch
+          spec:
+            containers:
+            - name: elasticsearch
+              image: "docker.elastic.co/elasticsearch/elasticsearch:{{ elk.elasticsearch.version }}"
+              env:
+              - name: discovery.type
+                value: single-node
+              - name: xpack.security.enabled
+                value: "false"
+              - name: ES_JAVA_OPTS
+                value: "-Xms1g -Xmx1g"
+              ports:
+              - containerPort: 9200
+              resources:
+                limits:
+                  memory: "{{ elk.elasticsearch.memory_limit }}"
+                requests:
+                  memory: "{{ elk.elasticsearch.memory_request }}"
+
+- name: "🔍 建立 Elasticsearch Service"
+  k8s:
+    state: present
+    kubeconfig: "{{ ansible_env.HOME }}/.kube/config"
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: elasticsearch
+        namespace: "{{ elk.namespace }}"
+      spec:
+        selector:
+          app: elasticsearch
+        ports:
+        - port: 9200
+          targetPort: 9200
+          nodePort: "{{ elk.elasticsearch.port }}"
+        type: NodePort
+
+- name: "📊 部署 Kibana"
+  k8s:
+    state: present
+    kubeconfig: "{{ ansible_env.HOME }}/.kube/config"
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: kibana
+        namespace: "{{ elk.namespace }}"
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: kibana
+        template:
+          metadata:
+            labels:
+              app: kibana
+          spec:
+            containers:
+            - name: kibana
+              image: "docker.elastic.co/kibana/kibana:{{ elk.kibana.version }}"
+              env:
+              - name: ELASTICSEARCH_HOSTS
+                value: "http://elasticsearch:9200"
+              - name: xpack.security.enabled
+                value: "false"
+              ports:
+              - containerPort: 5601
+              resources:
+                limits:
+                  memory: "{{ elk.kibana.memory_limit }}"
+                requests:
+                  memory: "{{ elk.kibana.memory_request }}"
+
+- name: "📊 建立 Kibana Service"
+  k8s:
+    state: present
+    kubeconfig: "{{ ansible_env.HOME }}/.kube/config"
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: kibana
+        namespace: "{{ elk.namespace }}"
+      spec:
+        selector:
+          app: kibana
+        ports:
+        - port: 5601
+          targetPort: 5601
+          nodePort: "{{ elk.kibana.port }}"
+        type: NodePort
+
+- name: "⏳ 等待 Elasticsearch 準備就緒"
+  uri:
+    url: "http://{{ hostvars['k3s-master-01']['ansible_host'] }}:{{ elk.elasticsearch.port }}/_cluster/health"
+    method: GET
+    status_code: 200
+  register: es_health
+  retries: 30
+  delay: 10
+  until: es_health.status == 200
+
+- name: "⏳ 等待 Kibana 準備就緒"
+  uri:
+    url: "http://{{ hostvars['k3s-master-01']['ansible_host'] }}:{{ elk.kibana.port }}/api/status"
+    method: GET
+    status_code: 200
+  register: kibana_health
+  retries: 30
+  delay: 10
+  until: kibana_health.status == 200
+
+- name: "✅ ELK Stack 部署完成"
+  debug:
+    msg:
+      - "Elasticsearch: http://{{ hostvars['k3s-master-01']['ansible_host'] }}:{{ elk.elasticsearch.port }}"
+      - "Kibana: http://{{ hostvars['k3s-master-01']['ansible_host'] }}:{{ elk.kibana.port }}"

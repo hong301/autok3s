@@ -1,0 +1,137 @@
+# ☸️ Auto K3s + ELK 一鍵部署 Playbook
+---
+- name: "🚀 Auto K3s + ELK Stack 完整部署"
+  hosts: localhost
+  gather_facts: yes
+  become: yes
+  vars:
+    deployment_start_time: "{{ ansible_date_time.epoch }}"
+  
+  pre_tasks:
+    - name: "🎯 部署開始"
+      debug:
+        msg: 
+          - "=============================================="
+          - "🚀 Auto K3s + ELK Stack 部署開始"
+          - "⏰ 開始時間: {{ ansible_date_time.iso8601 }}"
+          - "🏗️ 預計完成時間: 8-10 分鐘"
+          - "=============================================="
+
+  roles:
+    - role: proxmox_prepare
+      tags: [prepare, proxmox]
+      
+    - role: vm_template
+      tags: [template, vm]
+      
+    - role: k3s_vms
+      tags: [vms, k3s]
+
+  post_tasks:
+    - name: "📊 更新 inventory 的動態 IP"
+      lineinfile:
+        path: "{{ inventory_dir }}/hosts.yml"
+        regexp: 'k3s_master_ip.*default'
+        line: "          k3s_master_ip: \"{{ k3s_master_ip }}\""
+      when: k3s_master_ip is defined
+
+    - name: "📊 更新 Worker IP 變數"
+      lineinfile:
+        path: "{{ inventory_dir }}/hosts.yml"
+        regexp: "{{ item.pattern }}"
+        line: "{{ item.line }}"
+      loop:
+        - pattern: 'k3s_worker_01_ip.*default'
+          line: "          k3s_worker_01_ip: \"{{ k3s_worker_01_ip }}\""
+        - pattern: 'k3s_worker_02_ip.*default'
+          line: "          k3s_worker_02_ip: \"{{ k3s_worker_02_ip }}\""
+        - pattern: 'k3s_worker_03_ip.*default'
+          line: "          k3s_worker_03_ip: \"{{ k3s_worker_03_ip }}\""
+      when: 
+        - k3s_worker_01_ip is defined
+        - k3s_worker_02_ip is defined
+        - k3s_worker_03_ip is defined
+
+    - name: "✅ 第一階段完成 - VM 建立"
+      debug:
+        msg:
+          - "🎉 第一階段完成！K3s 節點已建立"
+          - "👑 Master: {{ k3s_master_ip }}"
+          - "👷 Workers: {{ k3s_worker_01_ip }}, {{ k3s_worker_02_ip }}, {{ k3s_worker_03_ip }}"
+
+# K3s 集群安裝
+- name: "☸️ K3s 集群安裝"
+  hosts: k3s_cluster
+  gather_facts: yes
+  become: yes
+  serial: 1
+  
+  roles:
+    - role: k3s_cluster
+      tags: [k3s, cluster]
+
+# ELK Stack 部署 (在 Master 執行)
+- name: "🔍 ELK Stack 部署"
+  hosts: k3s_master
+  gather_facts: no
+  
+  roles:
+    - role: elk_stack
+      tags: [elk, elasticsearch, kibana]
+      
+    - role: logstash  
+      tags: [elk, logstash]
+      
+    - role: beats
+      tags: [beats, k3s]
+
+# Proxmox 主機 Beats 安裝
+- name: "📊 Proxmox 主機監控"
+  hosts: proxmox
+  gather_facts: yes
+  become: yes
+  
+  roles:
+    - role: proxmox_beats
+      tags: [beats, proxmox]
+
+# 部署完成總結
+- name: "🎉 部署完成總結"
+  hosts: localhost
+  gather_facts: yes
+  
+  tasks:
+    - name: "⏱️ 計算部署時間"
+      set_fact:
+        deployment_duration: "{{ ((ansible_date_time.epoch | int) - (deployment_start_time | int)) / 60 }}"
+    
+    - name: "🎉 部署成功！"
+      debug:
+        msg:
+          - "=============================================="
+          - "🎉 Auto K3s + ELK Stack 部署成功！"
+          - "⏱️ 總部署時間: {{ deployment_duration | round(1) }} 分鐘"
+          - "=============================================="
+          - ""
+          - "📋 部署摘要："
+          - "  • K3s: 1 Master + 3 Worker 節點"
+          - "  • ELK: Elasticsearch + Logstash + Kibana"
+          - "  • Beats: 多層次監控 (Proxmox + K3s)"
+          - "  • DaemonSets: Filebeat + Metricbeat (每個節點)"
+          - ""
+          - "🔗 服務連接："
+          - "  • Kibana: http://{{ hostvars['k3s-master-01']['ansible_host'] }}:30561"
+          - "  • Elasticsearch: http://{{ hostvars['k3s-master-01']['ansible_host'] }}:30920"
+          - ""
+          - "📊 Index Patterns (在 Kibana 建立)："
+          - "  • filebeat-proxmox-* (Proxmox 日誌)"
+          - "  • metricbeat-proxmox-* (Proxmox 指標)"
+          - "  • auditbeat-proxmox-* (安全審計)"
+          - "  • k3s-logs-* (K3s 容器日誌)"
+          - "  • k3s-metrics-* (K3s 系統指標)"
+          - ""
+          - "🎯 下一步:"
+          - "  1. 訪問 Kibana 建立 Index Patterns"
+          - "  2. 匯入預設儀表板"
+          - "  3. 開始監控您的基礎設施！"
+          - "=============================================="

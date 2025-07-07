@@ -1,0 +1,78 @@
+# 🧹 清理環境 Playbook
+---
+- name: "🧹 清理 K3s + ELK 環境"
+  hosts: localhost
+  gather_facts: no
+  become: yes
+  
+  vars_prompt:
+    - name: confirm_cleanup
+      prompt: "⚠️ 確定要清理所有 VM 和環境嗎？(yes/no)"
+      private: no
+      
+  tasks:
+    - name: "❌ 取消清理"
+      fail:
+        msg: "清理已取消"
+      when: confirm_cleanup != "yes"
+    
+    - name: "🗑️ 開始清理環境"
+      debug:
+        msg: "開始清理 K3s + ELK 環境..."
+    
+    # 停止和刪除 VM
+    - name: "🛑 停止所有 VM"
+      command: "qm stop {{ item }}"
+      loop: [101, 102, 103, 104, 9000]
+      failed_when: false
+      
+    - name: "🗑️ 刪除所有 VM"
+      command: "qm destroy {{ item }} --purge"
+      loop: [101, 102, 103, 104, 9000]
+      failed_when: false
+    
+    # 清理下載的映像
+    - name: "🗑️ 清理 Ubuntu 映像"
+      file:
+        path: "/var/lib/vz/template/iso/ubuntu-*"
+        state: absent
+      failed_when: false
+    
+    # 清理 SSH known_hosts
+    - name: "🔑 清理 SSH known_hosts"
+      known_hosts:
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ hostvars['k3s-master-01']['ansible_host'] | default('') }}"
+        - "{{ hostvars['k3s-worker-01']['ansible_host'] | default('') }}"
+        - "{{ hostvars['k3s-worker-02']['ansible_host'] | default('') }}"
+        - "{{ hostvars['k3s-worker-03']['ansible_host'] | default('') }}"
+      failed_when: false
+      when: item != ""
+    
+    # 重置 inventory
+    - name: "📝 重置 inventory IP"
+      replace:
+        path: "inventory/hosts.yml"
+        regexp: '{{ item.pattern }}'
+        replace: '{{ item.replace }}'
+      loop:
+        - pattern: 'k3s_master_ip: ".*"'
+          replace: 'k3s_master_ip: "{{ hostvars[\"localhost\"][\"k3s_master_ip\"] | default(\"\") }}"'
+        - pattern: 'k3s_worker_01_ip: ".*"'
+          replace: 'k3s_worker_01_ip: "{{ hostvars[\"localhost\"][\"k3s_worker_01_ip\"] | default(\"\") }}"'
+        - pattern: 'k3s_worker_02_ip: ".*"'
+          replace: 'k3s_worker_02_ip: "{{ hostvars[\"localhost\"][\"k3s_worker_02_ip\"] | default(\"\") }}"'
+        - pattern: 'k3s_worker_03_ip: ".*"'
+          replace: 'k3s_worker_03_ip: "{{ hostvars[\"localhost\"][\"k3s_worker_03_ip\"] | default(\"\") }}"'
+      failed_when: false
+    
+    - name: "✅ 清理完成"
+      debug:
+        msg:
+          - "🎉 環境清理完成！"
+          - "🗑️ 已刪除所有 VM"
+          - "🧹 已清理映像檔案"
+          - "🔑 已清理 SSH 設定"
+          - "📝 已重置 inventory"

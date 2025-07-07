@@ -1,0 +1,107 @@
+# 📊 Proxmox 主機 Beats 安裝任務
+---
+- name: "📊 安裝 Proxmox 主機 Beats"
+  debug:
+    msg: "開始在 Proxmox 主機安裝 Filebeat, Metricbeat, Auditbeat"
+
+# 安裝 Elastic 官方 APT 倉庫
+- name: "🔑 加入 Elastic APT key"
+  apt_key:
+    url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+    state: present
+  become: yes
+
+- name: "📦 加入 Elastic APT 倉庫"
+  apt_repository:
+    repo: "deb https://artifacts.elastic.co/packages/8.x/apt stable main"
+    state: present
+  become: yes
+
+- name: "📦 更新 APT 快取"
+  apt:
+    update_cache: yes
+  become: yes
+
+# 安裝 Beats
+- name: "📦 安裝 Filebeat"
+  apt:
+    name: filebeat
+    state: present
+  become: yes
+
+- name: "📦 安裝 Metricbeat"
+  apt:
+    name: metricbeat
+    state: present
+  become: yes
+
+- name: "📦 安裝 Auditbeat"
+  apt:
+    name: auditbeat
+    state: present
+  become: yes
+
+# 配置 Filebeat
+- name: "📝 配置 Filebeat"
+  template:
+    src: filebeat.yml.j2
+    dest: /etc/filebeat/filebeat.yml
+    mode: '0600'
+  become: yes
+  notify: restart filebeat
+
+# 配置 Metricbeat
+- name: "📈 配置 Metricbeat"
+  template:
+    src: metricbeat.yml.j2
+    dest: /etc/metricbeat/metricbeat.yml
+    mode: '0600'
+  become: yes
+  notify: restart metricbeat
+
+# 配置 Auditbeat
+- name: "🛡️ 配置 Auditbeat"
+  template:
+    src: auditbeat.yml.j2
+    dest: /etc/auditbeat/auditbeat.yml
+    mode: '0600'
+  become: yes
+  notify: restart auditbeat
+
+# 啟用並啟動服務
+- name: "🚀 啟用並啟動 Filebeat"
+  systemd:
+    name: filebeat
+    enabled: yes
+    state: started
+  become: yes
+
+- name: "🚀 啟用並啟動 Metricbeat"
+  systemd:
+    name: metricbeat
+    enabled: yes
+    state: started
+  become: yes
+
+- name: "🚀 啟用並啟動 Auditbeat"
+  systemd:
+    name: auditbeat
+    enabled: yes
+    state: started
+  become: yes
+
+# 驗證服務狀態
+- name: "🔍 檢查 Beats 服務狀態"
+  command: systemctl is-active {{ item }}
+  register: beat_status
+  loop:
+    - filebeat
+    - metricbeat
+    - auditbeat
+  become: yes
+  changed_when: false
+
+- name: "✅ 顯示 Beats 狀態"
+  debug:
+    msg: "{{ item.item }}: {{ item.stdout }}"
+  loop: "{{ beat_status.results }}"

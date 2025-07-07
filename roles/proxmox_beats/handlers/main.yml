@@ -1,0 +1,19 @@
+# Handlers for Proxmox Beats
+---
+- name: restart filebeat
+  systemd:
+    name: filebeat
+    state: restarted
+  become: yes
+
+- name: restart metricbeat
+  systemd:
+    name: metricbeat
+    state: restarted
+  become: yes
+
+- name: restart auditbeat
+  systemd:
+    name: auditbeat
+    state: restarted
+  become: yes

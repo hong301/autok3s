@@ -1,0 +1,159 @@
+# 🔍 Ansible 專案自我檢測 Playbook
+---
+- name: "🔍 Auto K3s + ELK Ansible 專案檢測"
+  hosts: localhost
+  gather_facts: yes
+  connection: local
+  
+  vars:
+    pass_count: 0
+    fail_count: 0
+    warn_count: 0
+    
+  tasks:
+    - name: "🔍 開始專案檢測"
+      debug:
+        msg:
+          - "🔍 Auto K3s + ELK Ansible 專案自我檢測"
+          - "========================================"
+    
+    # 1. 檢查專案結構
+    - name: "📂 1. 專案結構檢查"
+      debug:
+        msg: "檢查 Ansible 專案結構..."
+    
+    - name: "🔍 檢查必要檔案"
+      stat:
+        path: "{{ item }}"
+      register: file_check
+      loop:
+        - "../ansible.cfg"
+        - "../inventory/hosts.yml"
+        - "../group_vars/all.yml"
+        - "../deploy.yml"
+        - "../README.md"
+        - "../requirements.txt"
+        - "../ansible_deploy.sh"
+      
+    - name: "✅ 顯示檔案檢查結果"
+      debug:
+        msg: "{{ '✅' if item.stat.exists else '❌' }} {{ item.item | basename }}"
+      loop: "{{ file_check.results }}"
+    
+    # 2. 檢查 Ansible Roles
+    - name: "📂 2. Ansible Roles 檢查"
+      debug:
+        msg: "檢查 Ansible Roles 結構..."
+    
+    - name: "🔍 檢查 Roles 目錄"
+      find:
+        paths: "../roles"
+        file_type: directory
+        depth: 1
+      register: roles_check
+      
+    - name: "✅ 顯示 Roles"
+      debug:
+        msg: "✅ Role: {{ item.path | basename }}"
+      loop: "{{ roles_check.files }}"
+    
+    # 3. 檢查 Ansible 語法
+    - name: "🔧 3. Ansible 語法檢查"
+      debug:
+        msg: "檢查 Playbook 語法..."
+    
+    - name: "🔍 語法檢查 - 主 Playbook"
+      command: ansible-playbook --syntax-check ../deploy.yml
+      register: syntax_check
+      changed_when: false
+      failed_when: false
+    
+    - name: "✅ 語法檢查結果"
+      debug:
+        msg: "{{ '✅ 語法正確' if syntax_check.rc == 0 else '❌ 語法錯誤' }}"
+    
+    # 4. 檢查依賴套件
+    - name: "📦 4. 依賴套件檢查"
+      debug:
+        msg: "檢查必要的 Python 套件..."
+    
+    - name: "🔍 檢查 Python 套件"
+      pip:
+        name: "{{ item }}"
+        state: present
+      register: pip_check
+      failed_when: false
+      loop:
+        - ansible
+        - kubernetes
+        - proxmoxer
+        - requests
+      check_mode: yes
+    
+    - name: "✅ 顯示套件狀態"
+      debug:
+        msg: "{{ '✅' if not item.changed else '⚠️ 需要安裝' }} {{ item.item }}"
+      loop: "{{ pip_check.results }}"
+    
+    # 5. 檢查環境配置
+    - name: "🌐 5. 環境配置檢查"
+      debug:
+        msg: "檢查部署環境..."
+    
+    - name: "🔍 檢查 Proxmox 指令"
+      command: which qm
+      register: qm_check
+      failed_when: false
+      changed_when: false
+    
+    - name: "✅ Proxmox 環境"
+      debug:
+        msg: "{{ '✅ Proxmox VE 環境' if qm_check.rc == 0 else '⚠️ 非 Proxmox VE 環境' }}"
+    
+    - name: "🔍 檢查 SSH 金鑰"
+      stat:
+        path: "{{ ansible_env.HOME }}/.ssh/id_rsa.pub"
+      register: ssh_key
+    
+    - name: "✅ SSH 金鑰"
+      debug:
+        msg: "{{ '✅ SSH 公鑰存在' if ssh_key.stat.exists else '⚠️ SSH 金鑰不存在' }}"
+    
+    # 6. 網路連線檢查
+    - name: "🌐 6. 網路連線檢查"
+      debug:
+        msg: "檢查網路連線..."
+    
+    - name: "🔍 檢查網路連線"
+      uri:
+        url: "https://cloud-images.ubuntu.com"
+        method: HEAD
+        status_code: [200, 301, 302]
+      register: network_check
+      failed_when: false
+    
+    - name: "✅ 網路連線"
+      debug:
+        msg: "{{ '✅ 網路連線正常' if network_check.status in [200, 301, 302] else '⚠️ 網路連線異常' }}"
+    
+    # 7. 計算檢測統計
+    - name: "📊 7. 檢測統計"
+      set_fact:
+        total_checks: 17
+        issues_found: "{{ (file_check.results | selectattr('stat.exists', 'equalto', false) | list | length) + (0 if syntax_check.rc == 0 else 1) + (pip_check.results | selectattr('changed', 'equalto', true) | list | length) }}"
+    
+    # 8. 最終結果
+    - name: "🎯 8. 檢測結果"
+      debug:
+        msg:
+          - "🎯 檢測統計："
+          - "  • 總檢查項目: {{ total_checks }}"
+          - "  • ✅ 通過: {{ total_checks | int - issues_found | int }}"
+          - "  • ⚠️ 需要注意: {{ issues_found }}"
+          - ""
+          - "{{ '🎉 專案狀態良好，可以進行部署！' if issues_found | int == 0 else '💡 請檢查上述項目後再部署' }}"
+          - ""
+          - "🚀 下一步："
+          - "  1. 確保 Proxmox VE 環境準備就緒"
+          - "  2. 安裝缺少的 Python 套件: pip install ansible kubernetes proxmoxer requests"
+          - "  3. 執行部署: ansible-playbook deploy.yml"

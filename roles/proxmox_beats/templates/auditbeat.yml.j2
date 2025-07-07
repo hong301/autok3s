@@ -1,0 +1,54 @@
+auditbeat.modules:
+- module: auditd
+  audit_rules: |
+    # Monitor file access
+    -w /etc/passwd -p rwxa -k passwd_changes
+    -w /etc/shadow -p rwxa -k passwd_changes
+    -w /etc/group -p rwxa -k group_changes
+    -w /etc/sudoers -p rwxa -k sudoers_changes
+    
+    # Monitor Proxmox configuration
+    -w /etc/pve/ -p rwxa -k pve_config
+    -w /etc/network/interfaces -p rwxa -k network_config
+    
+    # Monitor SSH
+    -w /home/ -p rwxa -k home_changes
+    -w /root/.ssh/ -p rwxa -k ssh_changes
+
+- module: file_integrity
+  paths:
+  - /bin
+  - /usr/bin
+  - /sbin
+  - /usr/sbin
+  - /etc
+  - /boot
+
+- module: system
+  datasets:
+    - host
+    - login
+    - package
+    - process
+    - socket
+    - user
+  period: 10s
+
+processors:
+- add_host_metadata:
+    when.not.contains.tags: forwarded
+
+fields:
+  log_type: proxmox
+fields_under_root: false
+
+output.logstash:
+  hosts: ["{{ hostvars['k3s-master-01']['ansible_host'] }}:{{ elk.logstash.port }}"]
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/auditbeat
+  name: auditbeat
+  keepfiles: 7
+  permissions: 0644

@@ -1,0 +1,47 @@
+metricbeat.config.modules:
+  path: ${path.config}/modules.d/*.yml
+  reload.enabled: false
+
+metricbeat.modules:
+- module: system
+  metricsets:
+    - cpu
+    - memory
+    - network
+    - filesystem
+    - diskio
+    - process
+    - process_summary
+    - uptime
+    - core
+  enabled: true
+  period: 10s
+  processes: ['.*']
+
+- module: linux
+  metricsets:
+    - iostat
+    - memory
+    - network
+    - process
+  enabled: true
+  period: 10s
+
+processors:
+- add_host_metadata:
+    when.not.contains.tags: forwarded
+
+fields:
+  log_type: proxmox
+fields_under_root: false
+
+output.logstash:
+  hosts: ["{{ hostvars['k3s-master-01']['ansible_host'] }}:{{ elk.logstash.port }}"]
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/metricbeat
+  name: metricbeat
+  keepfiles: 7
+  permissions: 0644

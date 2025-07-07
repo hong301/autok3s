@@ -1,0 +1,59 @@
+# ☸️ Proxmox 環境準備任務
+---
+- name: "🔍 檢查 Proxmox VE 環境"
+  debug:
+    msg: "開始準備 Proxmox VE 環境..."
+
+- name: "📦 安裝必要套件"
+  package:
+    name:
+      - wget
+      - jq
+      - whois  # 包含 mkpasswd
+      - python3-proxmoxer
+      - python3-requests
+    state: present
+  become: yes
+
+- name: "🔑 檢查 SSH 金鑰"
+  stat:
+    path: "{{ ansible_env.HOME }}/.ssh/id_rsa.pub"
+  register: ssh_key_check
+
+- name: "🔑 生成 SSH 金鑰 (如果不存在)"
+  openssh_keypair:
+    path: "{{ ansible_env.HOME }}/.ssh/id_rsa"
+    type: rsa
+    size: 4096
+  when: not ssh_key_check.stat.exists
+
+- name: "📁 建立 ISO 目錄"
+  file:
+    path: /var/lib/vz/template/iso
+    state: directory
+    mode: '0755'
+  become: yes
+
+- name: "📥 下載 Ubuntu Cloud Image"
+  get_url:
+    url: "{{ ubuntu_image.url }}"
+    dest: "{{ ubuntu_image.local_path }}"
+    mode: '0644'
+    timeout: 300
+  become: yes
+  register: download_result
+
+- name: "✅ 顯示下載結果"
+  debug:
+    msg: "Ubuntu Cloud Image 下載完成: {{ ubuntu_image.local_path }}"
+  when: download_result.changed
+
+- name: "🔍 檢查映像檔大小"
+  stat:
+    path: "{{ ubuntu_image.local_path }}"
+  register: image_stat
+
+- name: "❌ 驗證映像檔完整性"
+  fail:
+    msg: "映像檔大小異常，請檢查下載"
+  when: image_stat.stat.size < 100000000  # 至少 100MB

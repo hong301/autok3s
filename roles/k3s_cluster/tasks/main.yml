@@ -1,0 +1,74 @@
+# ☸️ K3s 集群安裝任務
+---
+- name: "☸️ 安裝 K3s 集群"
+  debug:
+    msg: "開始安裝 K3s 集群..."
+
+# Master 節點安裝
+- name: "👑 安裝 K3s Master"
+  shell: |
+    curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--node-name=k3s-master --write-kubeconfig-mode 644" sh -
+  delegate_to: "{{ hostvars['k3s-master-01']['ansible_host'] }}"
+  when: inventory_hostname == 'k3s-master-01'
+
+- name: "⏳ 等待 K3s Master 啟動"
+  wait_for:
+    host: "{{ hostvars['k3s-master-01']['ansible_host'] }}"
+    port: 6443
+    delay: 30
+    timeout: 300
+  delegate_to: localhost
+  when: inventory_hostname == 'k3s-master-01'
+
+- name: "🔑 取得 K3s Token"
+  shell: "cat /var/lib/rancher/k3s/server/node-token"
+  register: k3s_token_result
+  delegate_to: "{{ hostvars['k3s-master-01']['ansible_host'] }}"
+  when: inventory_hostname == 'k3s-master-01'
+
+- name: "📝 設定 K3s Token"
+  set_fact:
+    k3s_node_token: "{{ k3s_token_result.stdout }}"
+  when: inventory_hostname == 'k3s-master-01'
+
+# Worker 節點加入
+- name: "👷 安裝 K3s Worker 節點"
+  shell: |
+    curl -sfL https://get.k3s.io | K3S_URL=https://{{ hostvars['k3s-master-01']['ansible_host'] }}:6443 \
+    K3S_TOKEN={{ hostvars['k3s-master-01']['k3s_node_token'] }} \
+    INSTALL_K3S_EXEC="--node-name={{ inventory_hostname }}" sh -
+  when: k3s_role == 'worker'
+
+- name: "⏳ 等待 Worker 節點加入"
+  pause:
+    seconds: 30
+  when: k3s_role == 'worker'
+
+# 驗證集群狀態
+- name: "🔍 檢查節點狀態"
+  shell: "kubectl get nodes -o wide"
+  register: nodes_status
+  delegate_to: "{{ hostvars['k3s-master-01']['ansible_host'] }}"
+  when: inventory_hostname == 'k3s-master-01'
+
+- name: "✅ 顯示集群狀態"
+  debug:
+    msg: "{{ nodes_status.stdout_lines }}"
+  when: inventory_hostname == 'k3s-master-01'
+
+# 複製 kubeconfig
+- name: "📋 複製 kubeconfig 到本地"
+  fetch:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: "{{ ansible_env.HOME }}/.kube/config"
+    flat: yes
+  delegate_to: "{{ hostvars['k3s-master-01']['ansible_host'] }}"
+  when: inventory_hostname == 'k3s-master-01'
+
+- name: "🔧 修正 kubeconfig server 地址"
+  replace:
+    path: "{{ ansible_env.HOME }}/.kube/config"
+    regexp: 'https://127.0.0.1:6443'
+    replace: "https://{{ hostvars['k3s-master-01']['ansible_host'] }}:6443"
+  delegate_to: localhost
+  when: inventory_hostname == 'k3s-master-01'

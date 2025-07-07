@@ -1,6 +1,6 @@
-# ☸️ Auto K3s + ELK Cluster on Proxmox VE
+# ☸️ Auto K3s + ELK Cluster on Proxmox VE (Ansible Enterprise)
 
-一鍵在 **Proxmox VE** 上部署完整的 K3s + ELK Stack 監控解決方案。
+企業級 **Ansible** 解決方案，一鍵在 **Proxmox VE** 上部署完整的 K3s + ELK Stack 監控平台！
 
 ## 🎯 功能特色
 
@@ -8,23 +8,41 @@
 - 🔍 **完整 ELK Stack**: Elasticsearch + Logstash + Kibana
 - 📊 **多層次監控**: Proxmox 主機 + K3s 容器雙重監控
 - 🛡️ **安全審計**: Filebeat + Metricbeat + Auditbeat
-- 🔧 **模組化設計**: 可單獨執行或一鍵部署
+- 🔧 **Ansible 驅動**:## 📚 相關文件
+
+- 📖 **[README.md](README.md)** - 主要說明文件 (本檔案)
+- 🛠️ **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - 詳細故障排除指南
+- 📋 **[CHANGELOG.md](CHANGELOG.md)** - 版本更新日誌與功能演進
+- 📊 **[PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)** - 專案完成總結
+- 🧪 **[test_deploy.sh](test_deploy.sh)** - 部署測試工具理和冪等性
 - 🚀 **DaemonSet 部署**: 每個節點自動部署監控代理
+- 🔄 **可重複部署**: 完全冪等，支持重新執行
+- 📋 **角色化管理**: 模組化 Ansible Roles 設計
 
 ---
 
 ## 🚀 快速開始
 
+### 📦 **第零步：安裝依賴**
+```bash
+# 安裝 Ansible 和必要套件
+pip install ansible kubernetes proxmoxer requests
+```
+
 ### 🔍 **第一步：自我檢測**
 ```bash
 git clone https://github.com/hong301/autok3s.git
-cd autok3s && chmod +x *.sh
-./self_check.sh
+cd autok3s
+ansible-playbook playbooks/self_check.yml
 ```
 
-### 🚀 **第二步：一鍵部署**
+### 🚀 **第二步：Ansible 一鍵部署**
 ```bash
-sudo ./deploy_k3s_elk.sh
+# 方法 1: 使用快速部署腳本
+./ansible_deploy.sh
+
+# 方法 2: 直接執行 Ansible
+ansible-playbook deploy.yml --ask-become-pass
 ```
 
 **約 8-10 分鐘完成部署！**
@@ -35,19 +53,52 @@ sudo ./deploy_k3s_elk.sh
 
 ```
 autok3s/
-├── common_functions.sh           # 🔧 共用函數庫
-├── 01_build_template.sh          # 🏗️ 建立 VM Template
-├── 02_clone_k3s_nodes.sh         # 🖥️ 建立 K3s 節點 (1M+3W)
-├── 03_install_k3s.sh             # ☸️ 安裝 K3s Cluster
-├── 04_install_elk_stack.sh       # 🔍 安裝 Elasticsearch + Kibana
-├── 05_install_logstash.sh        # 🔄 安裝 Logstash
-├── 06_install_beats_on_proxmox.sh # 📊 Proxmox 主機 Beats
-├── 07_install_k3s_filebeat.sh    # 📝 K3s Filebeat DaemonSet
-├── 08_install_k3s_metricbeat.sh  # 📈 K3s Metricbeat DaemonSet
-├── deploy_k3s_elk.sh             # 🚀 **一鍵部署腳本**
-├── self_check.sh                 # 🔍 **專案自我檢測**
-├── meta-data & user-data         # Cloud-init 設定檔
-└── README.md                     # 📖 專案說明
+├── ansible.cfg                       # 🔧 Ansible 配置
+├── inventory/hosts.yml               # 📋 主機清單與變數
+├── group_vars/all.yml               # 🌐 全域變數配置
+├── deploy.yml                       # 🚀 主要部署 Playbook
+├── requirements.txt                 # 📦 Python 依賴清單
+├── ansible_deploy.sh               # ⚡ 快速部署腳本
+├── test_deploy.sh                  # 🧪 部署測試工具
+├── roles/                          # 📁 Ansible Roles
+│   ├── proxmox_prepare/            # 🏗️ Proxmox 環境準備
+│   ├── vm_template/                # 📋 虛擬機器模板
+│   ├── k3s_vms/                   # 🖥️ K3s 虛擬機器創建
+│   ├── k3s_cluster/               # ☸️ K3s 集群部署
+│   ├── elk_stack/                 # 🔍 ELK Stack 部署
+│   ├── logstash/                  # 📊 Logstash 配置
+│   ├── beats/                     # 📈 Beats 代理
+│   └── proxmox_beats/             # 🖥️ Proxmox 監控
+├── playbooks/                     # 📋 輔助 Playbooks
+│   ├── self_check.yml            # ✅ 自我檢測
+│   └── cleanup.yml               # 🧹 清理部署
+├── README.md                      # 📖 主要說明文件
+├── TROUBLESHOOTING.md            # 🛠️ 故障排除指南
+├── CHANGELOG.md                  # 📋 版本更新日誌
+├── PROJECT_SUMMARY.md            # 📊 專案總結
+├── meta-data                     # ☁️ Cloud-Init 元資料
+└── user-data                     # ☁️ Cloud-Init 使用者資料
+```
+├── inventory/
+│   └── hosts.yml                     # 📋 主機清單和變數
+├── group_vars/
+│   └── all.yml                       # 🌐 全域變數
+├── roles/                            # 📂 Ansible Roles
+│   ├── proxmox_prepare/              # 🔧 Proxmox 環境準備
+│   ├── vm_template/                  # 🏗️ VM Template 建立
+│   ├── k3s_vms/                      # 🖥️ K3s 節點建立
+│   ├── k3s_cluster/                  # ☸️ K3s 集群安裝
+│   ├── elk_stack/                    # 🔍 ELK Stack 部署
+│   ├── logstash/                     # 🔄 Logstash 配置
+│   ├── beats/                        # 📝 K3s Beats DaemonSet
+│   └── proxmox_beats/                # 📊 Proxmox 主機 Beats
+├── playbooks/                        # 📚 額外 Playbooks
+│   ├── self_check.yml                # 🔍 自我檢測
+│   └── cleanup.yml                   # 🧹 環境清理
+├── deploy.yml                        # 🚀 **主部署 Playbook**
+├── ansible_deploy.sh                 # 🚀 **快速部署腳本**
+├── meta-data & user-data             # ☁️ Cloud-init 設定檔
+└── README.md                         # 📖 專案說明
 ```
 
 ---
@@ -106,49 +157,52 @@ autok3s/
 
 ## 🔧 部署步驟詳解
 
-### � **預檢查（推薦）**
+### 🔍 **預檢查（推薦）**
 ```bash
-# 專案自我檢測
-./self_check.sh
+# Ansible 專案自我檢測
+ansible-playbook playbooks/self_check.yml
 ```
-- ✅ 檢查專案完整性
-- ✅ 驗證語法正確性  
-- ✅ 確認環境準備度
-- ✅ 檢測潛在問題
+- ✅ 檢查專案完整性和 Ansible 語法
+- ✅ 驗證依賴套件安裝狀況
+- ✅ 確認 Proxmox 環境準備度
+- ✅ 檢測潛在配置問題
 
-### �🚀 **一鍵部署**
+### 🚀 **Ansible 一鍵部署**
 ```bash
-sudo ./deploy_k3s_elk.sh
-```
+# 使用快速腳本
+./ansible_deploy.sh
 
-### 🔧 **分步驟執行**
-```bash
-# 步驟 1: 建立 VM Template
-sudo ./01_build_template.sh
-
-# 步驟 2: 建立 K3s 節點 (1M+3W)  
-sudo ./02_clone_k3s_nodes.sh
-
-# 步驟 3: 安裝 K3s 集群
-sudo ./03_install_k3s.sh
-
-# 步驟 4: 安裝 Elasticsearch + Kibana
-sudo ./04_install_elk_stack.sh
-
-# 步驟 5: 安裝 Logstash
-sudo ./05_install_logstash.sh
-
-# 步驟 6: 安裝 K3s Filebeat (DaemonSet)
-sudo ./07_install_k3s_filebeat.sh
-
-# 步驟 7: 安裝 K3s Metricbeat (DaemonSet)
-sudo ./08_install_k3s_metricbeat.sh
-
-# 步驟 8: 安裝 Proxmox 主機 Beats
-sudo ./06_install_beats_on_proxmox.sh
+# 或直接執行
+ansible-playbook deploy.yml --ask-become-pass
 ```
 
-每個步驟都會顯示執行進度和階段完成狀態。
+### 🔧 **分角色執行**
+```bash
+# 只執行環境準備
+ansible-playbook deploy.yml --tags prepare
+
+# 只建立 VM Template
+ansible-playbook deploy.yml --tags template
+
+# 只建立 K3s 節點
+ansible-playbook deploy.yml --tags vms
+
+# 只安裝 K3s 集群
+ansible-playbook deploy.yml --tags k3s
+
+# 只部署 ELK Stack
+ansible-playbook deploy.yml --tags elk
+
+# 只安裝 Beats 監控
+ansible-playbook deploy.yml --tags beats
+```
+
+### 🧹 **環境清理**
+```bash
+ansible-playbook playbooks/cleanup.yml
+```
+
+每個步驟都會顯示執行進度和階段完成狀態，支援冪等重複執行。
 
 ---
 
@@ -162,6 +216,7 @@ sudo ./06_install_beats_on_proxmox.sh
 
 ### 📋 軟體需求
 - ✅ **Proxmox VE** (已設定 local-lvm 儲存)
+- ✅ **Ansible** 和 Python 套件
 - ✅ **SSH 金鑰**: `~/.ssh/id_rsa.pub`
 - ✅ **Root 權限** 或 sudo 存取
 - ✅ **網路連線** (下載套件和映像)
@@ -171,104 +226,175 @@ sudo ./06_install_beats_on_proxmox.sh
 - **Worker**: 2 CPU, 4GB RAM, 32GB 儲存
 - **總計**: 10 CPU, 20GB RAM, 128GB 儲存
 
+### 📋 Python 依賴套件
+```bash
+pip install ansible kubernetes proxmoxer requests
+```
+
 ---
 
 ## 🔧 故障排除
 
-### 🔍 **預部署檢查**
+### 🔍 **快速除錯步驟**
 ```bash
-# 1. 執行自我檢測
-./self_check.sh
+# 1. 執行 Ansible 自我檢測
+ansible-playbook playbooks/self_check.yml
 
-# 2. 確認檢測結果
-#    - ✅ 全部通過：可直接部署
-#    - ⚠️  有警告：檢查警告項目
-#    - ❌ 有錯誤：修復後再檢測
+# 2. 檢查 Ansible 版本
+ansible --version
+
+# 3. 詳細日誌模式執行
+ansible-playbook deploy.yml -vvv
 ```
 
-### 🔍 **VM 無法取得 IP**
+### 📚 **詳細故障排除指南**
+請參考完整的故障排除文件：[`TROUBLESHOOTING.md`](TROUBLESHOOTING.md)
+
+內容包括：
+- Ansible 相關問題解決
+- Proxmox API 認證問題
+- K3s 集群部署問題  
+- ELK Stack 配置問題
+- 網路連線問題
+- 常用除錯命令集
+
+### 🔍 **VM 網路問題**
 ```bash
-# 檢查 guest-agent 狀態
+# 檢查 VM 狀態
+ansible-playbook deploy.yml --tags vms --check
+
+# 手動檢查 guest-agent
 qm guest cmd <VMID> qemu-agent-command --command '{"execute": "guest-ping"}'
-
-# 重啟 guest-agent
-ssh ubuntu@<VM_IP> "sudo systemctl restart qemu-guest-agent"
 ```
 
-### 🔍 K3s 問題
+### 🔍 **K3s 集群問題**
 ```bash
 # 檢查 K3s 狀態
-ssh ubuntu@<Master_IP> "sudo systemctl status k3s"
-ssh ubuntu@<Master_IP> "sudo journalctl -u k3s -f"
+ansible k3s_master -m shell -a "kubectl get nodes -o wide"
 
-# 檢查節點狀態
-ssh ubuntu@<Master_IP> "kubectl get nodes -o wide"
+# 檢查服務狀態
+ansible k3s_cluster -m shell -a "systemctl status k3s" --become
 ```
 
-### 🔍 ELK 問題
+### 🔍 **ELK 服務問題**
 ```bash
 # 檢查 Pod 狀態
-ssh ubuntu@<Master_IP> "kubectl get pods -n logging"
-ssh ubuntu@<Master_IP> "kubectl logs -n logging <pod-name>"
+ansible k3s_master -m shell -a "kubectl get pods -n logging"
 
-# 檢查 Elasticsearch 索引
-curl -X GET "http://<Master_IP>:30920/_cat/indices?v"
-
-# 檢查 Kibana 連線
+# 檢查服務連線
+curl -X GET "http://<Master_IP>:30920/_cluster/health"
 curl -X GET "http://<Master_IP>:30561/api/status"
 ```
 
-### 🔍 Beats 問題
+### 🔍 **Beats 監控問題**
 ```bash
-# 檢查 Proxmox 主機 Beats 狀態
-systemctl status filebeat metricbeat auditbeat
+# 檢查 Proxmox 主機 Beats
+ansible proxmox -m shell -a "systemctl status filebeat metricbeat auditbeat" --become
 
-# 檢查 K3s DaemonSet 狀態
-ssh ubuntu@<Master_IP> "kubectl get ds -n logging"
+# 檢查 K3s DaemonSet
+ansible k3s_master -m shell -a "kubectl get ds -n logging"
 ```
 
-### 🧹 清理環境
+### 🧹 **完全清理環境**
 ```bash
-# 刪除所有 VM
-for vmid in 101 102 103 104 9000; do qm destroy $vmid --purge; done
+# 使用 Ansible 清理
+ansible-playbook playbooks/cleanup.yml
 
-# 清理下載的映像
+# 手動清理 (如果需要)
+for vmid in 101 102 103 104 9000; do qm destroy $vmid --purge 2>/dev/null; done
 rm -f /var/lib/vz/template/iso/ubuntu-*
-
-# 清理 SSH known_hosts
-ssh-keygen -R <VM_IP>
 ```
+
+---
+
+## 🎯 Ansible 版本優勢
+
+### 🔧 **企業級管理**
+- **冪等性**: 可安全重複執行，不會造成重複配置
+- **角色化**: 模組化設計，易於維護和擴展
+- **庫存管理**: 動態主機清單和變數管理
+- **錯誤處理**: 優雅的錯誤處理和回滾機制
+
+### 📊 **可觀測性**
+- **任務追蹤**: 詳細的執行日誌和狀態回報
+- **標籤支援**: 可選擇性執行特定角色或任務
+- **乾執行**: --check 模式預覽變更
+- **並行執行**: 多主機同時部署
+
+### 🔄 **維運友善**
+- **配置即程式碼**: YAML 格式易讀易維護
+- **版本控制**: 完整的基礎設施即程式碼
+- **模板系統**: Jinja2 模板動態配置
+- **擴展性**: 輕鬆加入新節點或服務
 
 ---
 
 ## 🎯 延伸功能
 
 ### 🔒 安全增強
+- [ ] Ansible Vault 加密敏感資料
 - [ ] X-Pack Security (用戶認證)
 - [ ] HTTPS/TLS 加密
 - [ ] 網路隔離與防火牆
 
 ### 📊 監控增強
-- [ ] Grafana 整合
-- [ ] 自動告警 (Watcher)
-- [ ] 效能調優
+- [ ] Grafana 整合 Playbook
+- [ ] 自動告警配置 (Watcher)
+- [ ] 效能調優 Playbook
+- [ ] 自動擴容機制
 
 ### 🔧 營運增強
 - [ ] 資料生命週期管理 (ILM)
-- [ ] 多節點 Elasticsearch
-- [ ] 備份與災難恢復
+- [ ] 多節點 Elasticsearch 集群
+- [ ] 備份與災難恢復 Playbook
+- [ ] 滾動更新機制
+
+### 🌐 多環境支援
+- [ ] 開發/測試/生產環境分離
+- [ ] 多 Proxmox 節點支援
+- [ ] 混合雲部署支援
+- [ ] GitOps 整合
 
 ---
 
-## 🤝 貢獻
+## 📚 相關文件
+
+- 📖 **[README.md](README.md)** - 主要說明文件 (本檔案)
+- 📜 **[README_SHELL.md](README_SHELL.md)** - 原始 Shell Script 版本說明
+- 🛠️ **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - 詳細故障排除指南
+- 📋 **[CHANGELOG.md](CHANGELOG.md)** - 版本更新日誌與功能演進
+- � **[test_deploy.sh](test_deploy.sh)** - 部署測試工具
+
+## �🤝 貢獻
 
 歡迎提交 Issue 和 Pull Request！
 
+### 💡 **如何貢獻**
 1. Fork 專案
 2. 建立功能分支: `git checkout -b feature/your-feature`
 3. 提交變更: `git commit -am 'Add feature'`
 4. 推送: `git push origin feature/your-feature`
 5. 建立 Pull Request
+
+### 🧪 **開發指南**
+```bash
+# 語法檢查
+ansible-playbook --syntax-check deploy.yml
+
+# 乾執行測試
+ansible-playbook deploy.yml --check
+
+# 單一角色測試
+ansible-playbook deploy.yml --tags prepare --check
+
+# 使用測試工具
+./test_deploy.sh
+```
+
+### 🐛 **回報問題**
+- 查看 [TROUBLESHOOTING.md](TROUBLESHOOTING.md) 故障排除指南
+- 使用 GitHub Issues 回報問題
+- 提供詳細的環境資訊和錯誤日誌
 
 ---
 
@@ -278,4 +404,10 @@ MIT License - 查看 [LICENSE](LICENSE) 了解詳情。
 
 ---
 
-**🙏 致謝**: [K3s](https://k3s.io/) | [Elastic Stack](https://www.elastic.co/) | [Proxmox VE](https://www.proxmox.com/)
+## 🙏 致謝
+
+**感謝開源社群**: [Ansible](https://www.ansible.com/) | [K3s](https://k3s.io/) | [Elastic Stack](https://www.elastic.co/) | [Proxmox VE](https://www.proxmox.com/)
+
+**🆕 版本**: v2.0.0 - Ansible 企業級部署解決方案 ⭐ **當前版本**
+
+> **📝 專案特色**: 企業級 Ansible 解決方案，提供冪等性、可擴展性和專業運維管理。詳見 [`CHANGELOG.md`](CHANGELOG.md)。

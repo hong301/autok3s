@@ -1,0 +1,59 @@
+# 🏗️ VM Template 建立任務
+---
+- name: "🏗️ 建立 VM Template"
+  debug:
+    msg: "開始建立 VM Template (ID: {{ template_id }})"
+
+- name: "🔍 檢查 Template 是否已存在"
+  shell: "qm list | grep {{ template_id }}"
+  register: template_exists
+  failed_when: false
+  changed_when: false
+
+- name: "🗑️ 刪除現有 Template (如果存在)"
+  shell: "qm destroy {{ template_id }} --purge"
+  when: template_exists.rc == 0
+  
+- name: "📖 讀取 SSH 公鑰"
+  slurp:
+    src: "{{ ansible_env.HOME }}/.ssh/id_rsa.pub"
+  register: ssh_public_key
+
+- name: "🔐 生成密碼雜湊"
+  shell: "mkpasswd -m sha-512 ubuntu"
+  register: password_hash
+  changed_when: false
+
+- name: "🛠️ 建立 VM"
+  shell: |
+    qm create {{ template_id }} \
+      --name ubuntu-22.04-template \
+      --memory 2048 \
+      --cores 2 \
+      --net0 virtio,bridge={{ bridge }} \
+      --scsihw virtio-scsi-pci \
+      --scsi0 {{ storage }}:0,import-from={{ ubuntu_image.local_path }},discard=on
+
+- name: "💿 設定開機裝置"
+  shell: "qm set {{ template_id }} --boot order=scsi0"
+
+- name: "☁️ 建立 Cloud-Init Drive"
+  shell: "qm set {{ template_id }} --ide2 {{ storage }}:cloudinit"
+
+- name: "🔧 設定序列控制台"
+  shell: "qm set {{ template_id }} --serial0 socket --vga serial0"
+
+- name: "📝 設定 Cloud-Init 用戶資料"
+  shell: |
+    qm set {{ template_id }} \
+      --ciuser ubuntu \
+      --cipassword ubuntu \
+      --sshkeys {{ ansible_env.HOME }}/.ssh/id_rsa.pub \
+      --ipconfig0 ip=dhcp
+
+- name: "🏷️ 設定為 Template"
+  shell: "qm template {{ template_id }}"
+
+- name: "✅ Template 建立完成"
+  debug:
+    msg: "VM Template {{ template_id }} 建立成功！"

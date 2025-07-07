@@ -1,0 +1,161 @@
+# 🔄 Logstash 部署任務
+---
+- name: "🔄 部署 Logstash"
+  debug:
+    msg: "開始部署 Logstash..."
+
+- name: "📝 建立 Logstash ConfigMap"
+  k8s:
+    state: present
+    kubeconfig: "{{ ansible_env.HOME }}/.kube/config"
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: logstash-config
+        namespace: "{{ elk.namespace }}"
+      data:
+        logstash.yml: |
+          http.host: "0.0.0.0"
+          xpack.monitoring.elasticsearch.hosts: [ "http://elasticsearch:9200" ]
+          xpack.monitoring.enabled: false
+        pipelines.yml: |
+          - pipeline.id: beats
+            path.config: "/usr/share/logstash/pipeline/beats.conf"
+        beats.conf: |
+          input {
+            beats {
+              port => 5044
+            }
+          }
+          
+          filter {
+            if [@metadata][beat] == "filebeat" {
+              if [fields][log_type] == "proxmox" {
+                mutate {
+                  add_field => { "[@metadata][index]" => "filebeat-proxmox-%{+YYYY.MM.dd}" }
+                }
+              } else if [fields][log_type] == "k3s" {
+                mutate {
+                  add_field => { "[@metadata][index]" => "k3s-logs-%{+YYYY.MM.dd}" }
+                }
+              }
+            }
+            
+            if [@metadata][beat] == "metricbeat" {
+              if [fields][log_type] == "proxmox" {
+                mutate {
+                  add_field => { "[@metadata][index]" => "metricbeat-proxmox-%{+YYYY.MM.dd}" }
+                }
+              } else if [fields][log_type] == "k3s" {
+                mutate {
+                  add_field => { "[@metadata][index]" => "k3s-metrics-%{+YYYY.MM.dd}" }
+                }
+              }
+            }
+            
+            if [@metadata][beat] == "auditbeat" {
+              mutate {
+                add_field => { "[@metadata][index]" => "auditbeat-proxmox-%{+YYYY.MM.dd}" }
+              }
+            }
+          }
+          
+          output {
+            elasticsearch {
+              hosts => ["elasticsearch:9200"]
+              index => "%{[@metadata][index]}"
+            }
+            stdout {
+              codec => rubydebug
+            }
+          }
+
+- name: "🔄 部署 Logstash Deployment"
+  k8s:
+    state: present
+    kubeconfig: "{{ ansible_env.HOME }}/.kube/config"
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: logstash
+        namespace: "{{ elk.namespace }}"
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: logstash
+        template:
+          metadata:
+            labels:
+              app: logstash
+          spec:
+            containers:
+            - name: logstash
+              image: "docker.elastic.co/logstash/logstash:{{ elk.logstash.version }}"
+              ports:
+              - containerPort: 5044
+              - containerPort: 9600
+              volumeMounts:
+              - name: config
+                mountPath: /usr/share/logstash/config
+              - name: pipeline
+                mountPath: /usr/share/logstash/pipeline
+              resources:
+                limits:
+                  memory: "{{ elk.logstash.memory_limit }}"
+                requests:
+                  memory: "{{ elk.logstash.memory_request }}"
+            volumes:
+            - name: config
+              configMap:
+                name: logstash-config
+                items:
+                - key: logstash.yml
+                  path: logstash.yml
+                - key: pipelines.yml
+                  path: pipelines.yml
+            - name: pipeline
+              configMap:
+                name: logstash-config
+                items:
+                - key: beats.conf
+                  path: beats.conf
+
+- name: "🔄 建立 Logstash Service"
+  k8s:
+    state: present
+    kubeconfig: "{{ ansible_env.HOME }}/.kube/config"
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: logstash
+        namespace: "{{ elk.namespace }}"
+      spec:
+        selector:
+          app: logstash
+        ports:
+        - name: beats
+          port: 5044
+          targetPort: 5044
+          nodePort: "{{ elk.logstash.port }}"
+        - name: api
+          port: 9600
+          targetPort: 9600
+        type: NodePort
+
+- name: "⏳ 等待 Logstash 準備就緒"
+  uri:
+    url: "http://{{ hostvars['k3s-master-01']['ansible_host'] }}:9600"
+    method: GET
+    status_code: 200
+  register: logstash_health
+  retries: 20
+  delay: 15
+  until: logstash_health.status == 200
+
+- name: "✅ Logstash 部署完成"
+  debug:
+    msg: "Logstash 已成功部署並運行在端口 {{ elk.logstash.port }}"

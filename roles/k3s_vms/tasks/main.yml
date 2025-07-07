@@ -1,0 +1,97 @@
+# 🖥️ K3s VMs 建立任務
+---
+- name: "🖥️ 建立 K3s 節點"
+  debug:
+    msg: "開始建立 K3s 節點 (1 Master + 3 Workers)"
+
+# Master 節點
+- name: "👑 建立 K3s Master 節點"
+  shell: |
+    qm clone {{ template_id }} 101 \
+      --name k3s-master-01 \
+      --full \
+      --storage {{ storage }}
+  register: master_clone
+
+- name: "🔧 配置 Master 節點資源"
+  shell: |
+    qm set 101 \
+      --cores {{ master_cpu }} \
+      --memory {{ master_memory }} \
+      --scsi0 {{ storage }}:{{ master_disk }}
+
+# Worker 節點
+- name: "👷 建立 K3s Worker 節點"
+  shell: |
+    qm clone {{ template_id }} {{ item.vmid }} \
+      --name {{ item.name }} \
+      --full \
+      --storage {{ storage }}
+  loop:
+    - { vmid: 102, name: "k3s-worker-01" }
+    - { vmid: 103, name: "k3s-worker-02" }
+    - { vmid: 104, name: "k3s-worker-03" }
+
+- name: "🔧 配置 Worker 節點資源"
+  shell: |
+    qm set {{ item }} \
+      --cores {{ worker_cpu }} \
+      --memory {{ worker_memory }} \
+      --scsi0 {{ storage }}:{{ worker_disk }}
+  loop: [102, 103, 104]
+
+# 啟動所有節點
+- name: "🚀 啟動所有節點"
+  shell: "qm start {{ item }}"
+  loop: [101, 102, 103, 104]
+
+# 等待節點啟動
+- name: "⏳ 等待節點啟動"
+  wait_for:
+    timeout: 60
+  delegate_to: localhost
+
+# 取得 IP 地址
+- name: "🔍 取得 Master 節點 IP"
+  shell: "qm guest cmd 101 network-get-interfaces | jq -r '.result[] | select(.name==\"ens18\") | .\"ip-addresses\"[] | select(.\"ip-address-type\"==\"ipv4\") | .\"ip-address\"'"
+  register: master_ip_result
+  retries: 10
+  delay: 10
+  until: master_ip_result.stdout != ""
+
+- name: "🔍 取得 Worker 節點 IP"
+  shell: "qm guest cmd {{ item }} network-get-interfaces | jq -r '.result[] | select(.name==\"ens18\") | .\"ip-addresses\"[] | select(.\"ip-address-type\"==\"ipv4\") | .\"ip-address\"'"
+  register: worker_ip_results
+  retries: 10
+  delay: 10
+  until: worker_ip_results.stdout != ""
+  loop: [102, 103, 104]
+
+# 設定動態 IP 變數
+- name: "📝 設定動態 IP 變數"
+  set_fact:
+    k3s_master_ip: "{{ master_ip_result.stdout }}"
+    k3s_worker_01_ip: "{{ worker_ip_results.results[0].stdout }}"
+    k3s_worker_02_ip: "{{ worker_ip_results.results[1].stdout }}"
+    k3s_worker_03_ip: "{{ worker_ip_results.results[2].stdout }}"
+
+- name: "✅ 顯示節點 IP"
+  debug:
+    msg:
+      - "Master IP: {{ k3s_master_ip }}"
+      - "Worker 01 IP: {{ k3s_worker_01_ip }}"
+      - "Worker 02 IP: {{ k3s_worker_02_ip }}"
+      - "Worker 03 IP: {{ k3s_worker_03_ip }}"
+
+# 等待 SSH 服務準備
+- name: "🔑 等待 SSH 服務準備"
+  wait_for:
+    host: "{{ item }}"
+    port: 22
+    delay: 30
+    timeout: 300
+  loop:
+    - "{{ k3s_master_ip }}"
+    - "{{ k3s_worker_01_ip }}"
+    - "{{ k3s_worker_02_ip }}"
+    - "{{ k3s_worker_03_ip }}"
