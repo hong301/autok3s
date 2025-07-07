@@ -74,6 +74,6 @@ network:
   dns_servers: "{{ dns_servers }}"
 
 # 💾 儲存配置
-storage:
+storage_config:
   name: "{{ storage }}"
   format: "raw"

@@ -8,13 +8,7 @@
 - 🔍 **完整 ELK Stack**: Elasticsearch + Logstash + Kibana
 - 📊 **多層次監控**: Proxmox 主機 + K3s 容器雙重監控
 - 🛡️ **安全審計**: Filebeat + Metricbeat + Auditbeat
-- 🔧 **Ansible 驅動**:## 📚 相關文件
-
-- 📖 **[README.md](README.md)** - 主要說明文件 (本檔案)
-- 🛠️ **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - 詳細故障排除指南
-- 📋 **[CHANGELOG.md](CHANGELOG.md)** - 版本更新日誌與功能演進
-- 📊 **[PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)** - 專案完成總結
-- 🧪 **[test_deploy.sh](test_deploy.sh)** - 部署測試工具理和冪等性
+- 🔧 **Ansible 驅動**: 企業級部署管理和冪等性
 - 🚀 **DaemonSet 部署**: 每個節點自動部署監控代理
 - 🔄 **可重複部署**: 完全冪等，支持重新執行
 - 📋 **角色化管理**: 模組化 Ansible Roles 設計
@@ -24,10 +18,44 @@
 ## 🚀 快速開始
 
 ### 📦 **第零步：安裝依賴**
+
+由於 PEP 668 限制，現代 Ubuntu/Debian 系統不允許直接使用 pip 安裝全域套件。請選擇以下其中一種方式：
+
+#### 🎯 **推薦方式 1: 使用虛擬環境**
 ```bash
-# 安裝 Ansible 和必要套件
-pip install ansible kubernetes proxmoxer requests
+# 創建虛擬環境
+python3 -m venv ansible-env
+source ansible-env/bin/activate
+
+# 安裝依賴
+pip install -r requirements.txt
 ```
+
+#### 🎯 **推薦方式 2: 使用 pipx**
+```bash
+# 安裝 pipx
+sudo apt install pipx
+# 或 pip install --user pipx
+
+# 安裝 Ansible 和相關套件
+pipx install ansible
+pipx inject ansible kubernetes proxmoxer requests
+```
+
+#### 🎯 **方式 3: 使用系統套件管理器**
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install ansible python3-kubernetes python3-proxmoxer python3-requests
+```
+
+#### 🎯 **方式 4: 強制安裝 (不推薦)**
+```bash
+# 僅在了解風險的情況下使用
+pip install --break-system-packages ansible kubernetes proxmoxer requests
+```
+
+> 💡 **提示**: `ansible_deploy.sh` 腳本會自動處理依賴安裝，支援多種安裝方式！
 
 ### 🔍 **第一步：自我檢測**
 ```bash
@@ -78,27 +106,6 @@ autok3s/
 ├── PROJECT_SUMMARY.md            # 📊 專案總結
 ├── meta-data                     # ☁️ Cloud-Init 元資料
 └── user-data                     # ☁️ Cloud-Init 使用者資料
-```
-├── inventory/
-│   └── hosts.yml                     # 📋 主機清單和變數
-├── group_vars/
-│   └── all.yml                       # 🌐 全域變數
-├── roles/                            # 📂 Ansible Roles
-│   ├── proxmox_prepare/              # 🔧 Proxmox 環境準備
-│   ├── vm_template/                  # 🏗️ VM Template 建立
-│   ├── k3s_vms/                      # 🖥️ K3s 節點建立
-│   ├── k3s_cluster/                  # ☸️ K3s 集群安裝
-│   ├── elk_stack/                    # 🔍 ELK Stack 部署
-│   ├── logstash/                     # 🔄 Logstash 配置
-│   ├── beats/                        # 📝 K3s Beats DaemonSet
-│   └── proxmox_beats/                # 📊 Proxmox 主機 Beats
-├── playbooks/                        # 📚 額外 Playbooks
-│   ├── self_check.yml                # 🔍 自我檢測
-│   └── cleanup.yml                   # 🧹 環境清理
-├── deploy.yml                        # 🚀 **主部署 Playbook**
-├── ansible_deploy.sh                 # 🚀 **快速部署腳本**
-├── meta-data & user-data             # ☁️ Cloud-init 設定檔
-└── README.md                         # 📖 專案說明
 ```
 
 ---
@@ -360,12 +367,12 @@ rm -f /var/lib/vz/template/iso/ubuntu-*
 ## 📚 相關文件
 
 - 📖 **[README.md](README.md)** - 主要說明文件 (本檔案)
-- 📜 **[README_SHELL.md](README_SHELL.md)** - 原始 Shell Script 版本說明
 - 🛠️ **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - 詳細故障排除指南
 - 📋 **[CHANGELOG.md](CHANGELOG.md)** - 版本更新日誌與功能演進
-- � **[test_deploy.sh](test_deploy.sh)** - 部署測試工具
+- 📊 **[PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)** - 專案總結與架構說明
+- 🧪 **[test_deploy.sh](test_deploy.sh)** - 部署測試工具
 
-## �🤝 貢獻
+## 🤝 貢獻
 
 歡迎提交 Issue 和 Pull Request！
 

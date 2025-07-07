@@ -2,6 +2,67 @@
 
 ## 常見問題與解決方案
 
+### 0. Python 依賴安裝問題 (PEP 668)
+
+#### ❌ 問題：`error: externally-managed-environment`
+**原因**：Ubuntu 22.04+ 和 Debian 12+ 實施 PEP 668，禁止直接使用 pip 安裝全域套件
+
+**錯誤訊息範例**：
+```
+error: externally-managed-environment
+
+× This environment is externally managed
+╰─> To install Python packages system-wide, try apt install
+    python3-xyz, where xyz is the package you are trying to
+    install.
+```
+
+**解決方案**：
+
+#### 🎯 **方案 1: 使用虛擬環境 (推薦)**
+```bash
+# 創建並啟用虛擬環境
+python3 -m venv ansible-env
+source ansible-env/bin/activate
+
+# 安裝依賴
+pip install -r requirements.txt
+
+# 部署 (在虛擬環境中)
+./ansible_deploy.sh
+```
+
+#### 🎯 **方案 2: 使用 pipx (推薦)**
+```bash
+# 安裝 pipx
+sudo apt install pipx
+# 重新載入 PATH
+export PATH="$HOME/.local/bin:$PATH"
+
+# 安裝 Ansible 和相關套件
+pipx install ansible
+pipx inject ansible kubernetes proxmoxer requests
+
+# 驗證安裝
+ansible --version
+```
+
+#### 🎯 **方案 3: 使用系統套件**
+```bash
+sudo apt update
+sudo apt install -y ansible python3-kubernetes python3-proxmoxer python3-requests
+```
+
+#### 🎯 **方案 4: 使用 --break-system-packages (不推薦)**
+```bash
+# 只在測試環境或充分了解風險時使用
+pip install --break-system-packages -r requirements.txt
+```
+
+> 💡 **提示**: `ansible_deploy.sh` 腳本已更新，會自動嘗試多種安裝方式來解決 PEP 668 問題。
+
+---
+
 ### 1. Ansible 相關問題
 
 #### ❌ 問題：`ansible-playbook: command not found`
@@ -9,22 +70,39 @@
 
 **解決方案**：
 ```bash
-# 安裝 pip
-apt update && apt install python3-pip -y
+# 檢查 PATH 環境變數
+echo $PATH
 
-# 安裝 Ansible 和依賴
-pip3 install -r requirements.txt --break-system-packages
+# 如果使用 pipx 安裝，確保 PATH 包含 ~/.local/bin
+export PATH="$HOME/.local/bin:$PATH"
 
-# 或使用 apt 安裝
-apt install ansible -y
+# 重新安裝 Ansible (選擇適合的方式)
+# 方式 1: 虛擬環境
+python3 -m venv ansible-env && source ansible-env/bin/activate
+pip install ansible
+
+# 方式 2: pipx
+pipx install ansible
+
+# 方式 3: 系統套件
+sudo apt install ansible
 ```
 
-#### ❌ 問題：`proxmoxer` 模組錯誤
-**原因**：Proxmox API 庫未安裝
+#### ❌ 問題：`proxmoxer` 或 `kubernetes` 模組錯誤
+**原因**：Python 依賴庫未正確安裝
 
 **解決方案**：
 ```bash
-pip3 install proxmoxer requests --break-system-packages
+# 使用與 Ansible 相同的安裝方式
+# 如果 Ansible 在虛擬環境中：
+source ansible-env/bin/activate
+pip install proxmoxer requests kubernetes
+
+# 如果使用 pipx：
+pipx inject ansible proxmoxer requests kubernetes
+
+# 如果使用系統套件：
+sudo apt install python3-proxmoxer python3-requests python3-kubernetes
 ```
 
 #### ❌ 問題：Inventory 解析錯誤

@@ -32,7 +32,8 @@
       --cores 2 \
       --net0 virtio,bridge={{ bridge }} \
       --scsihw virtio-scsi-pci \
-      --scsi0 {{ storage }}:0,import-from={{ ubuntu_image.local_path }},discard=on
+      --scsi0 {{ storage }}:0,import-from={{ ubuntu_image.local_path }},discard=on \
+      --agent 1
 
 - name: "💿 設定開機裝置"
   shell: "qm set {{ template_id }} --boot order=scsi0"
@@ -49,7 +50,8 @@
       --ciuser ubuntu \
       --cipassword ubuntu \
       --sshkeys {{ ansible_env.HOME }}/.ssh/id_rsa.pub \
-      --ipconfig0 ip=dhcp
+      --ipconfig0 ip=dhcp \
+      --cicustom "user=local:snippets/user-data.yml"
 
 - name: "🏷️ 設定為 Template"
   shell: "qm template {{ template_id }}"
