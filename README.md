@@ -15,9 +15,15 @@
 
 ## 🚀 快速開始
 
+### 🔍 **第一步：自我檢測**
 ```bash
 git clone https://github.com/hong301/autok3s.git
-cd autok3s && chmod +x deploy_k3s_elk.sh
+cd autok3s && chmod +x *.sh
+./self_check.sh
+```
+
+### 🚀 **第二步：一鍵部署**
+```bash
 sudo ./deploy_k3s_elk.sh
 ```
 
@@ -39,6 +45,7 @@ autok3s/
 ├── 07_install_k3s_filebeat.sh    # 📝 K3s Filebeat DaemonSet
 ├── 08_install_k3s_metricbeat.sh  # 📈 K3s Metricbeat DaemonSet
 ├── deploy_k3s_elk.sh             # 🚀 **一鍵部署腳本**
+├── self_check.sh                 # 🔍 **專案自我檢測**
 ├── meta-data & user-data         # Cloud-init 設定檔
 └── README.md                     # 📖 專案說明
 ```
@@ -99,12 +106,22 @@ autok3s/
 
 ## 🔧 部署步驟詳解
 
-### 🚀 一鍵部署
+### � **預檢查（推薦）**
+```bash
+# 專案自我檢測
+./self_check.sh
+```
+- ✅ 檢查專案完整性
+- ✅ 驗證語法正確性  
+- ✅ 確認環境準備度
+- ✅ 檢測潛在問題
+
+### �🚀 **一鍵部署**
 ```bash
 sudo ./deploy_k3s_elk.sh
 ```
 
-### 🔧 分步驟執行
+### 🔧 **分步驟執行**
 ```bash
 # 步驟 1: 建立 VM Template
 sudo ./01_build_template.sh
@@ -158,7 +175,18 @@ sudo ./06_install_beats_on_proxmox.sh
 
 ## 🔧 故障排除
 
-### 🔍 VM 無法取得 IP
+### 🔍 **預部署檢查**
+```bash
+# 1. 執行自我檢測
+./self_check.sh
+
+# 2. 確認檢測結果
+#    - ✅ 全部通過：可直接部署
+#    - ⚠️  有警告：檢查警告項目
+#    - ❌ 有錯誤：修復後再檢測
+```
+
+### 🔍 **VM 無法取得 IP**
 ```bash
 # 檢查 guest-agent 狀態
 qm guest cmd <VMID> qemu-agent-command --command '{"execute": "guest-ping"}'

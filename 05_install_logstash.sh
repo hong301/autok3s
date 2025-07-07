@@ -292,6 +292,3 @@ echo "  3. 在 Kibana 中查看處理後的索引"
 
 echo "✅ 階段完成：05_install_logstash.sh"
 echo ""
-
-echo "✅ 階段完成：05_install_logstash.sh"
-echo ""
