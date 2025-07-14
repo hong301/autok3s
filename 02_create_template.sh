@@ -69,8 +69,8 @@ echo "[1/6] 建立 VM $TEMPLATE_ID..."
 if ! qm create $TEMPLATE_ID \
     --name "ubuntu-k3s-template" \
     --ostype l26 \
-    --memory 2048 \
-    --cores 2 \
+    --memory 4096 \
+    --cores 4 \
     --net0 "virtio,bridge=$NET_BRIDGE" \
     --serial0 socket \
     --vga serial0; then
@@ -141,8 +141,8 @@ echo "========================"
 echo "範本 ID: $TEMPLATE_ID"
 echo "範本名稱: ubuntu-k3s-template"
 echo "配置:"
-echo "  - CPU: 2 cores"
-echo "  - 記憶體: 2048 MB"
+echo "  - CPU: 4 cores"
+echo "  - 記憶體: 4096 MB"
 echo "  - 儲存: $STORAGE"
 echo "  - 網路: $NET_BRIDGE"
 echo "  - QEMU Guest Agent: 已啟用"
@@ -150,3 +150,4 @@ echo "  - Cloud-Init: 已配置"
 echo ""
 echo "💡 後續步驟:"
 echo "執行 03_deploy_k3s.sh 來部署 K3s 叢集"
+echo "每個從此範本建立的 VM 將會自動升級到 4CPU/4GB/20GB 配置"

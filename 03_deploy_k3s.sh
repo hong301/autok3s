@@ -151,7 +151,40 @@ create_vm() {
         return 1
     fi
     
-    # 2. 設定網路、cloud-init 參數
+    # 2. 依節點類型升級硬體配置
+    if [[ "$node_type" == "master" ]]; then
+        echo "升級 Master 硬體配置 (CPU: 4, 記憶體: 4GB, 磁碟: 20GB)..."
+        if ! qm set $vm_id --cores 4 --memory 4096; then
+            echo "[ERROR] 設定 Master CPU 和記憶體失敗"
+            cleanup_failed_vm $vm_id
+            return 1
+        fi
+        DISK_EXPAND="+18G"  # 擴展到 20GB
+        
+        # ELK Stack 配置 (預留，暫時註解)
+        # echo "升級 Master 硬體配置 (CPU: 4, 記憶體: 8GB, 磁碟: 30GB) - 適合 ELK Stack..."
+        # if ! qm set $vm_id --cores 4 --memory 8192; then
+        #     echo "[ERROR] 設定 Master CPU 和記憶體失敗"
+        #     cleanup_failed_vm $vm_id
+        #     return 1
+        # fi
+        # DISK_EXPAND="+28G"  # 擴展到 30GB
+    else
+        echo "升級 Worker 硬體配置 (CPU: 2, 記憶體: 2GB, 磁碟: 15GB)..."
+        if ! qm set $vm_id --cores 2 --memory 2048; then
+            echo "[ERROR] 設定 Worker CPU 和記憶體失敗"
+            cleanup_failed_vm $vm_id
+            return 1
+        fi
+        DISK_EXPAND="+13G"  # 擴展到 15GB
+    fi
+    
+    # 擴展磁碟空間
+    if ! qm disk resize $vm_id scsi0 $DISK_EXPAND; then
+        echo "[WARNING] 磁碟擴展失敗，繼續使用預設大小"
+    fi
+    
+    # 3. 設定網路、cloud-init 參數
     echo "設定 VM 參數..."
     if ! qm set $vm_id --net0 virtio,bridge=$NET_BRIDGE; then
         echo "[ERROR] 設定網路失敗"
@@ -165,20 +198,15 @@ create_vm() {
         return 1
     fi
     
-    if ! qm set $vm_id --hostname $vm_name; then
-        echo "[ERROR] 設定主機名稱失敗"
-        cleanup_failed_vm $vm_id
-        return 1
-    fi
-    
     # 啟用 QEMU Guest Agent
     qm set $vm_id --agent enabled=1
     
     # 3. 設定 cloud-init 自動安裝 K3s
     if [[ "$node_type" == "master" ]]; then
-        # Master 節點配置
+        # Master 節點配置 - 基本 K3s 安裝
         cat > k3s-user-data-${vm_id}.yaml <<EOF
 #cloud-config
+hostname: $vm_name
 package_update: true
 package_upgrade: true
 packages:
@@ -186,21 +214,47 @@ packages:
   - snapd
   - qemu-guest-agent
   - jq
+  - htop
+  - git
+# 啟用密碼認證
+ssh_pwauth: true
+password: FsI!^@#Zg
+chpasswd:
+  expire: false
+# 設定 ubuntu 使用者
+users:
+  - name: ubuntu
+    passwd: \$6\$rounds=4096\$saltsalt\$VkNkOKCVF7H0xBGrW8xtOy9z/nxd1mGXe7k8LIy4E9xNnxqK0KxU8Qz7x4P9LbGz5S9zV8YxQfRZ8nC5MzU9
+    lock_passwd: false
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    groups: sudo
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDfWp/8zoAlxO4N8fUnXoknIltAZk35so+JRcB+G95Z00NllcGKJT4ViRhaKX+Y728/abqu9y7twx/ywRGUnce9JqL+L1acv3aiKVcQDn2b5TyyZ73roU7KG3J3c3eGIKQ+dSO1/Ya498KPIh8grQMAjBYXBtBTqsFhOFxjacVCzKnS1QX0Rs8ryfyNB8L8B7rcoD5gB/WmMxuUINZAc6nZaN/4gbonb7FALNDt/FN916qu6wikA5/8rj2Iml09X6PDptPD6N8FBsZSzRas5NPpBt0++4zKmVyUAL2OatIvcnUIL16lREezFq6ENDsZGsM+tGL05pU+1AvLMeZmdp86isd7Zr71Y6wq4GD9L75PuyKyIhTBVHQ25mMgH/0Fduqr2n6ebEjZUsis/hkZMl0etvvwwnKQP10fm5sQFEkAxYw10xzeCtivQhvAdekeHmcDAFMgWiTj0ELfmyMEr/Xdot9bo3fC1FdkiZVXQT2WVAbgB15RHUKK2joMiA4gLmEuJ4ltCFSHC2ovCco58KbN93saM9LUw1Gt+Kb6gAmzz+zLBq7fc1/QET3dk6WhwnrkGBxGHZ9QYfZnP+AFHZywQq7gM+Yd0/ixipQJKGfraxFPBCX5yKuMBJenOtg9GQj+s3jZsOv3NMIX1JMrM7EjNxyYC8ovJSaRqHNjn5KPNw== root@devops
 runcmd:
   - systemctl enable qemu-guest-agent
   - systemctl start qemu-guest-agent
+  - resize2fs /dev/sda1 || true
+  # 確保 SSH 密碼認證啟用
+  - sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+  - sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+  - sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/g' /etc/ssh/sshd_config
+  - systemctl restart ssh
+  # 安裝 K3s
   - curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
   - mkdir -p /home/ubuntu/.kube
   - cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
   - chown ubuntu:ubuntu /home/ubuntu/.kube/config
   - sleep 30
   - export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  # 基礎設定
   - kubectl create namespace cert-manager || true
   - kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.crds.yaml || true
+  # 安裝 Helm
   - snap install helm --classic
   - helm repo add jetstack https://charts.jetstack.io
-  - helm repo add elk https://helm.elastic.co
   - helm repo update
+  # 安裝 cert-manager
   - helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace || true
   - echo "K3s Master installation completed" > /tmp/k3s-install-status
   - echo "Node token: \$(cat /var/lib/rancher/k3s/server/node-token)" >> /tmp/k3s-install-status
@@ -210,11 +264,83 @@ write_files:
     content: |
       #!/bin/bash
       echo "curl -sfL https://get.k3s.io | K3S_URL=https://\$(hostname -I | awk '{print \$1}'):6443 K3S_TOKEN=\$(cat /var/lib/rancher/k3s/server/node-token) sh -"
+
+# ELK Stack 配置 (預留，暫時註解)
+# #cloud-config
+# hostname: $vm_name
+# package_update: true
+# package_upgrade: true
+# packages:
+#   - curl
+#   - snapd
+#   - qemu-guest-agent
+#   - jq
+#   - htop
+#   - git
+#   - unzip
+#   - wget
+#   - apt-transport-https
+#   - ca-certificates
+#   - gnupg
+#   - lsb-release
+# runcmd:
+#   - systemctl enable qemu-guest-agent
+#   - systemctl start qemu-guest-agent
+#   - resize2fs /dev/sda1 || true
+#   # 優化系統參數for ELK Stack
+#   - echo 'vm.max_map_count=262144' >> /etc/sysctl.conf
+#   - echo 'fs.file-max=65536' >> /etc/sysctl.conf
+#   - sysctl -p
+#   # 安裝 K3s
+#   - curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
+#   - mkdir -p /home/ubuntu/.kube
+#   - cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
+#   - chown ubuntu:ubuntu /home/ubuntu/.kube/config
+#   - sleep 30
+#   - export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+#   # 基礎設定
+#   - kubectl create namespace cert-manager || true
+#   - kubectl create namespace elk-stack || true
+#   - kubectl create namespace logging || true
+#   - kubectl create namespace monitoring || true
+#   - kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.crds.yaml || true
+#   # 安裝 Helm
+#   - snap install helm --classic
+#   - helm repo add jetstack https://charts.jetstack.io
+#   - helm repo add elastic https://helm.elastic.co
+#   - helm repo add fluent https://fluenbit.io/helm-charts
+#   - helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   - helm repo update
+#   # 安裝 cert-manager (ELK 需要)
+#   - helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace || true
+#   # 創建 ELK 部署腳本
+#   - mkdir -p /opt/k3s-elk
+#   - echo "K3s Master installation completed" > /tmp/k3s-install-status
+#   - echo "Node token: \$(cat /var/lib/rancher/k3s/server/node-token)" >> /tmp/k3s-install-status
+#   - echo "ELK namespace created: elk-stack" >> /tmp/k3s-install-status
+# write_files:
+#   - path: /tmp/get-join-command.sh
+#     permissions: '0755'
+#     content: |
+#       #!/bin/bash
+#       echo "curl -sfL https://get.k3s.io | K3S_URL=https://\$(hostname -I | awk '{print \$1}'):6443 K3S_TOKEN=\$(cat /var/lib/rancher/k3s/server/node-token) sh -"
+#   - path: /opt/k3s-elk/deploy-elk.sh
+#     permissions: '0755'
+#     content: |
+#       #!/bin/bash
+#       # K3s ELK Stack 部署腳本
+#       [ELK deployment script content...]
+#   - path: /opt/k3s-elk/elk-values.yaml
+#     permissions: '0644'
+#     content: |
+#       # ELK Stack Helm Values
+#       [ELK values content...]
 EOF
     else
-        # Worker 節點配置 (需要手動加入叢集)
+        # Worker 節點配置 - 基本配置
         cat > k3s-user-data-${vm_id}.yaml <<EOF
 #cloud-config
+hostname: $vm_name
 package_update: true
 package_upgrade: true
 packages:
@@ -222,9 +348,32 @@ packages:
   - snapd
   - qemu-guest-agent
   - jq
+  - htop
+  - git
+# 啟用密碼認證
+ssh_pwauth: true
+password: FsI!^@#Zg
+chpasswd:
+  expire: false
+# 設定 ubuntu 使用者
+users:
+  - name: ubuntu
+    passwd: \$6\$rounds=4096\$saltsalt\$VkNkOKCVF7H0xBGrW8xtOy9z/nxd1mGXe7k8LIy4E9xNnxqK0KxU8Qz7x4P9LbGz5S9zV8YxQfRZ8nC5MzU9
+    lock_passwd: false
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    groups: sudo
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDfWp/8zoAlxO4N8fUnXoknIltAZk35so+JRcB+G95Z00NllcGKJT4ViRhaKX+Y728/abqu9y7twx/ywRGUnce9JqL+L1acv3aiKVcQDn2b5TyyZ73roU7KG3J3c3eGIKQ+dSO1/Ya498KPIh8grQMAjBYXBtBTqsFhOFxjacVCzKnS1QX0Rs8ryfyNB8L8B7rcoD5gB/WmMxuUINZAc6nZaN/4gbonb7FALNDt/FN916qu6wikA5/8rj2Iml09X6PDptPD6N8FBsZSzRas5NPpBt0++4zKmVyUAL2OatIvcnUIL16lREezFq6ENDsZGsM+tGL05pU+1AvLMeZmdp86isd7Zr71Y6wq4GD9L75PuyKyIhTBVHQ25mMgH/0Fduqr2n6ebEjZUsis/hkZMl0etvvwwnKQP10fm5sQFEkAxYw10xzeCtivQhvAdekeHmcDAFMgWiTj0ELfmyMEr/Xdot9bo3fC1FdkiZVXQT2WVAbgB15RHUKK2joMiA4gLmEuJ4ltCFSHC2ovCco58KbN93saM9LUw1Gt+Kb6gAmzz+zLBq7fc1/QET3dk6WhwnrkGBxGHZ9QYfZnP+AFHZywQq7gM+Yd0/ixipQJKGfraxFPBCX5yKuMBJenOtg9GQj+s3jZsOv3NMIX1JMrM7EjNxyYC8ovJSaRqHNjn5KPNw== root@devops
 runcmd:
   - systemctl enable qemu-guest-agent
   - systemctl start qemu-guest-agent
+  - resize2fs /dev/sda1 || true
+  # 確保 SSH 密碼認證啟用
+  - sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+  - sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+  - sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/g' /etc/ssh/sshd_config
+  - systemctl restart ssh
   - echo "K3s Worker node ready for manual join" > /tmp/k3s-install-status
   - echo "Run join command from master node" >> /tmp/k3s-install-status
 write_files:
@@ -241,6 +390,34 @@ write_files:
       MASTER_IP=\$1
       TOKEN=\$2
       curl -sfL https://get.k3s.io | K3S_URL=https://\${MASTER_IP}:6443 K3S_TOKEN=\${TOKEN} sh -
+      echo "Worker joined cluster successfully."
+
+# ELK 支援配置 (預留，暫時註解)
+# #cloud-config
+# hostname: $vm_name
+# package_update: true
+# package_upgrade: true
+# packages:
+#   - curl
+#   - snapd
+#   - qemu-guest-agent
+#   - jq
+#   - htop
+#   - git
+#   - unzip
+#   - wget
+# runcmd:
+#   - systemctl enable qemu-guest-agent
+#   - systemctl start qemu-guest-agent
+#   - resize2fs /dev/sda1 || true
+#   # 優化日誌相關設定
+#   - echo 'vm.max_map_count=262144' >> /etc/sysctl.conf
+#   - sysctl -p
+#   # 設定日誌輪轉
+#   - echo '/var/log/*.log { daily rotate 7 compress delaycompress missingok notifempty create 644 root root }' > /etc/logrotate.d/custom
+#   - echo "K3s Worker node ready for manual join" > /tmp/k3s-install-status
+#   - echo "Run join command from master node" >> /tmp/k3s-install-status
+#   - echo "Optimized for ELK logging" >> /tmp/k3s-install-status
 EOF
     fi
 
@@ -263,17 +440,13 @@ EOF
     # 清理本地的 user-data 檔案
     rm -f k3s-user-data-${vm_id}.yaml
     
-    # 4. 啟動新 VM
+    # 4. 啟動新 VM（不等待完成）
     echo "啟動 VM $vm_id..."
     if ! qm start $vm_id; then
         echo "[ERROR] 啟動 VM 失敗"
         cleanup_failed_vm $vm_id
         return 1
     fi
-    
-    # 等待 VM 啟動並取得 IP
-    sleep 10
-    get_vm_ip $vm_id
     
     echo "[SUCCESS] VM $vm_id ($vm_name) 已建立並啟動。"
     return 0
@@ -341,21 +514,25 @@ case $MODE in
                 echo "等待 2-3 分鐘讓 K3s 完成安裝，然後："
                 echo "1. 取得節點 token: ssh ubuntu@<VM_IP> 'sudo cat /var/lib/rancher/k3s/server/node-token'"
                 echo "2. 檢查叢集狀態: ssh ubuntu@<VM_IP> 'kubectl get nodes'"
+                echo "3. 檢查部署狀態: ./k3s-manager.sh status $START_ID"
             else
                 echo ""
                 echo "📝 K3s Worker 節點已準備就緒！"
                 echo "要加入叢集，請在此 VM 中執行:"
                 echo "ssh ubuntu@<VM_IP> 'sudo /tmp/join-cluster.sh <MASTER_IP> <TOKEN>'"
+                echo "或使用管理工具: ./k3s-manager.sh join $START_ID <MASTER_ID>"
             fi
         else
             exit 1
         fi
         ;;
     batch)
-        echo "開始批次建立 $COUNT 台 VM..."
+        echo "開始批次建立 $COUNT 台 VM（並行部署）..."
         CREATED_VMS=()
         FAILED=false
         
+        # 第一階段：快速建立所有 VM
+        echo "第一階段：並行建立所有 VM..."
         for i in $(seq 1 $COUNT); do
             vm_id=$((START_ID + i - 1))
             vm_name="${BASE_NAME}-${i}"
@@ -367,44 +544,94 @@ case $MODE in
                 NODE_TYPE="worker"
             fi
             
+            echo "[$i/$COUNT] 開始建立 VM $vm_id ($vm_name) - $NODE_TYPE 節點..."
+            
             if create_vm $vm_id $vm_name $NODE_TYPE; then
                 CREATED_VMS+=($vm_id)
-                echo "[SUCCESS] VM $vm_id ($NODE_TYPE) 建立成功"
+                echo "✅ VM $vm_id ($NODE_TYPE) 建立成功"
             else
-                echo "[ERROR] VM $vm_id 建立失敗"
+                echo "❌ VM $vm_id 建立失敗"
                 FAILED=true
                 break
             fi
             
-            # 等待 5 秒再建立下一台
-            if [[ $i -lt $COUNT ]]; then
-                sleep 5
-            fi
+            # 短暫延遲避免系統負載過高
+            sleep 2
         done
         
         if [[ "$FAILED" == "true" ]]; then
             echo "[WARNING] 部分 VM 建立失敗"
             echo "[INFO] 已成功建立的 VM: ${CREATED_VMS[*]}"
             exit 1
-        else
-            echo ""
-            echo "🎉 批次部署完成！已建立 $COUNT 台 VM (ID: $START_ID - $((START_ID + COUNT - 1)))"
-            echo ""
-            echo "📋 後續步驟:"
-            echo "1. 等待 3-5 分鐘讓所有 VM 完成初始化"
-            echo "2. Master 節點 (${CREATED_VMS[0]}) 會自動安裝 K3s"
-            echo "3. Worker 節點需要手動加入叢集"
-            echo ""
-            echo "🔧 加入 Worker 節點的步驟:"
-            echo "# 在 Master 節點取得 token"
-            echo "ssh ubuntu@<MASTER_IP> 'sudo cat /var/lib/rancher/k3s/server/node-token'"
-            echo ""
-            echo "# 在每個 Worker 節點執行"
-            for ((j=2; j<=COUNT; j++)); do
-                worker_id=$((START_ID + j - 1))
-                echo "ssh ubuntu@<WORKER_${j}_IP> 'sudo /tmp/join-cluster.sh <MASTER_IP> <TOKEN>'"
-            done
         fi
+        
+        echo ""
+        echo "🎉 批次部署完成！已建立 $COUNT 台 VM (ID: $START_ID - $((START_ID + COUNT - 1)))"
+        echo "📊 硬體配置:"
+        echo "   - Master: 4 CPU, 4GB RAM, 20GB 磁碟"
+        echo "   - Worker: 2 CPU, 2GB RAM, 15GB 磁碟"
+        echo ""
+        
+        # 第二階段：等待和檢查 VM 狀態
+        echo "第二階段：等待 VM 初始化完成..."
+        echo "正在等待所有 VM 啟動並取得 IP 地址..."
+        
+        # 等待 30 秒讓 VM 初始化
+        for i in {1..30}; do
+            echo -n "."
+            sleep 1
+        done
+        echo ""
+        
+        # 嘗試取得所有 VM 的 IP
+        echo "檢查 VM IP 地址："
+        for vm_id in "${CREATED_VMS[@]}"; do
+            echo -n "VM $vm_id: "
+            if ip=$(qm guest cmd $vm_id network-get-interfaces 2>/dev/null | \
+                    jq -r '.[] | select(.name != "lo") | ."ip-addresses"[]? | select(."ip-address-type" == "ipv4") | ."ip-address"' 2>/dev/null | \
+                    grep -v "127.0.0.1" | head -1); then
+                if [[ -n "$ip" && "$ip" != "null" ]]; then
+                    echo "$ip"
+                else
+                    echo "等待中..."
+                fi
+            else
+                echo "等待中..."
+            fi
+        done
+        
+        echo ""
+        echo "📋 後續步驟:"
+        echo "1. 等待 3-5 分鐘讓所有 VM 完成 Cloud-Init 初始化"
+        echo "2. Master 節點 (${CREATED_VMS[0]}) 會自動安裝 K3s"
+        echo "3. Worker 節點需要手動加入叢集"
+        echo ""
+        echo "🔧 加入 Worker 節點的步驟:"
+        echo "# 在 Master 節點取得 token"
+        echo "ssh ubuntu@<MASTER_IP> 'sudo cat /var/lib/rancher/k3s/server/node-token'"
+        echo ""
+        echo "# 在每個 Worker 節點執行"
+        for ((j=2; j<=COUNT; j++)); do
+            worker_id=$((START_ID + j - 1))
+            echo "ssh ubuntu@<WORKER_${j}_IP> 'sudo /tmp/join-cluster.sh <MASTER_IP> <TOKEN>'"
+        done
+        echo ""
+        echo "🛠️  或使用管理工具自動加入："
+        for ((j=2; j<=COUNT; j++)); do
+            worker_id=$((START_ID + j - 1))
+            echo "./k3s-manager.sh join $worker_id ${CREATED_VMS[0]}"
+        done
+        echo ""
+        echo "✅ K3s 叢集部署完成後，可使用以下命令檢查狀態："
+        echo "./k3s-manager.sh status ${CREATED_VMS[0]}"
+        echo ""
+        echo "📊 如需部署 ELK Stack (未來功能)："
+        echo "echo '等待 K3s 叢集穩定運行後，可考慮加入 ELK Stack 進行日誌管理'"
+        # echo "ssh ubuntu@<MASTER_IP> 'sudo /opt/k3s-elk/deploy-elk.sh'"
+        # echo ""
+        # echo "🌐 ELK 存取方式："
+        # echo "- Kibana: http://<MASTER_IP>:30601"
+        # echo "- Elasticsearch: http://<MASTER_IP>:9200"
         ;;
     *)
         echo "[ERROR] 不支援的模式: $MODE"
