@@ -232,6 +232,9 @@ users:
     ssh_authorized_keys:
       - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDfWp/8zoAlxO4N8fUnXoknIltAZk35so+JRcB+G95Z00NllcGKJT4ViRhaKX+Y728/abqu9y7twx/ywRGUnce9JqL+L1acv3aiKVcQDn2b5TyyZ73roU7KG3J3c3eGIKQ+dSO1/Ya498KPIh8grQMAjBYXBtBTqsFhOFxjacVCzKnS1QX0Rs8ryfyNB8L8B7rcoD5gB/WmMxuUINZAc6nZaN/4gbonb7FALNDt/FN916qu6wikA5/8rj2Iml09X6PDptPD6N8FBsZSzRas5NPpBt0++4zKmVyUAL2OatIvcnUIL16lREezFq6ENDsZGsM+tGL05pU+1AvLMeZmdp86isd7Zr71Y6wq4GD9L75PuyKyIhTBVHQ25mMgH/0Fduqr2n6ebEjZUsis/hkZMl0etvvwwnKQP10fm5sQFEkAxYw10xzeCtivQhvAdekeHmcDAFMgWiTj0ELfmyMEr/Xdot9bo3fC1FdkiZVXQT2WVAbgB15RHUKK2joMiA4gLmEuJ4ltCFSHC2ovCco58KbN93saM9LUw1Gt+Kb6gAmzz+zLBq7fc1/QET3dk6WhwnrkGBxGHZ9QYfZnP+AFHZywQq7gM+Yd0/ixipQJKGfraxFPBCX5yKuMBJenOtg9GQj+s3jZsOv3NMIX1JMrM7EjNxyYC8ovJSaRqHNjn5KPNw== root@devops
 
+# 強制啟用密碼和密鑰雙重認證
+ssh_pwauth: true
+
 chpasswd:
   expire: false
 
@@ -271,8 +274,11 @@ runcmd:
   - resize2fs /dev/sda1 || true
   # 安裝 K3s
   - curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
-  # 只啟用 k3s-setup 服務，讓它在 K3s 完成後自動執行
+  # 等待 K3s 服務完全啟動
+  - sleep 30
+  # 啟用並立即啟動 k3s-setup 服務
   - systemctl enable k3s-setup
+  - systemctl start k3s-setup
 
 write_files:
   - path: /tmp/get-join-command.sh
@@ -346,11 +352,13 @@ write_files:
       kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.crds.yaml || true
       
       # 設定 Helm repositories
-      helm repo add jetstack https://charts.jetstack.io
-      helm repo update
+      helm repo add jetstack https://charts.jetstack.io || true
+      helm repo update || true
+      echo "Helm repositories configured" >> /tmp/k3s-setup.log
       
       # 安裝 cert-manager
       helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace || true
+      echo "cert-manager installation attempted" >> /tmp/k3s-setup.log
       
       # 記錄完成狀態
       echo "K3s Master installation completed" > /tmp/k3s-install-status
