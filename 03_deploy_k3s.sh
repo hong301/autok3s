@@ -243,9 +243,27 @@ packages:
   - htop
 
 runcmd:
-  # 啟用密碼登入
+  # 建立 SSH 配置覆蓋目錄並強制啟用密碼驗證
+  - mkdir -p /etc/ssh/sshd_config.d
+  - echo 'PasswordAuthentication yes' > /etc/ssh/sshd_config.d/99-enable-password-auth.conf
+  - echo 'PubkeyAuthentication yes' >> /etc/ssh/sshd_config.d/99-enable-password-auth.conf
+  - echo 'ChallengeResponseAuthentication no' >> /etc/ssh/sshd_config.d/99-enable-password-auth.conf
+  - echo 'UsePAM yes' >> /etc/ssh/sshd_config.d/99-enable-password-auth.conf
+  # 額外的 SSH 配置修改（雙重保險）
   - sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+  - sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+  - sed -i 's/^#PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+  - echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config
+  - sed -i 's/^PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+  - sed -i 's/^#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+  # 重啟 SSH 服務並檢查狀態
   - systemctl restart ssh
+  - sleep 5
+  - systemctl status ssh --no-pager
+  # 驗證 SSH 配置
+  - sshd -T | grep -i passwordauthentication
+  - echo "SSH Password Authentication Status:" > /tmp/ssh-config-status
+  - sshd -T | grep -i passwordauthentication >> /tmp/ssh-config-status
   # 啟用 Guest Agent
   - systemctl enable qemu-guest-agent
   - systemctl start qemu-guest-agent
@@ -412,7 +430,7 @@ EOF
 #     content: |
 #       # ELK Stack Helm Values
 #       [ELK values content...]
-EOF
+# EOF
     else
         # Worker 節點配置 - 使用簡潔的 Cloud-Init YAML
         cat > k3s-user-data-${vm_id}.yaml <<EOF
@@ -427,6 +445,9 @@ users:
     ssh_authorized_keys:
       - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDfWp/8zoAlxO4N8fUnXoknIltAZk35so+JRcB+G95Z00NllcGKJT4ViRhaKX+Y728/abqu9y7twx/ywRGUnce9JqL+L1acv3aiKVcQDn2b5TyyZ73roU7KG3J3c3eGIKQ+dSO1/Ya498KPIh8grQMAjBYXBtBTqsFhOFxjacVCzKnS1QX0Rs8ryfyNB8L8B7rcoD5gB/WmMxuUAL2OatIvcnUIL16lREezFq6ENDsZGsM+tGL05pU+1AvLMeZmdp86isd7Zr71Y6wq4GD9L75PuyKyIhTBVHQ25mMgH/0Fduqr2n6ebEjZUsis/hkZMl0etvvwwnKQP10fm5sQFEkAxYw10xzeCtivQhvAdekeHmcDAFMgWiTj0ELfmyMEr/Xdot9bo3fC1FdkiZVXQT2WVAbgB15RHUKK2joMiA4gLmEuJ4ltCFSHC2ovCco58KbN93saM9LUw1Gt+Kb6gAmzz+zLBq7fc1/QET3dk6WhwnrkGBxGHZ9QYfZnP+AFHZywQq7gM+Yd0/ixipQJKGfraxFPBCX5yKuMBJenOtg9GQj+s3jZsOv3NMIX1JMrM7EjNxyYC8ovJSaRqHNjn5KPNw== root@devops
 
+# 強制啟用密碼驗證
+ssh_pwauth: true
+
 chpasswd:
   expire: false
 
@@ -438,9 +459,27 @@ packages:
   - htop
 
 runcmd:
-  # 啟用密碼登入
+  # 建立 SSH 配置覆蓋目錄並強制啟用密碼驗證
+  - mkdir -p /etc/ssh/sshd_config.d
+  - echo 'PasswordAuthentication yes' > /etc/ssh/sshd_config.d/99-enable-password-auth.conf
+  - echo 'PubkeyAuthentication yes' >> /etc/ssh/sshd_config.d/99-enable-password-auth.conf
+  - echo 'ChallengeResponseAuthentication no' >> /etc/ssh/sshd_config.d/99-enable-password-auth.conf
+  - echo 'UsePAM yes' >> /etc/ssh/sshd_config.d/99-enable-password-auth.conf
+  # 額外的 SSH 配置修改（雙重保險）
   - sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+  - sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+  - sed -i 's/^#PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+  - echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config
+  - sed -i 's/^PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+  - sed -i 's/^#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+  # 重啟 SSH 服務並檢查狀態
   - systemctl restart ssh
+  - sleep 5
+  - systemctl status ssh --no-pager
+  # 驗證 SSH 配置
+  - sshd -T | grep -i passwordauthentication
+  - echo "SSH Password Authentication Status:" > /tmp/ssh-config-status
+  - sshd -T | grep -i passwordauthentication >> /tmp/ssh-config-status
   # 啟用 Guest Agent
   - systemctl enable qemu-guest-agent
   - systemctl start qemu-guest-agent
@@ -449,6 +488,7 @@ runcmd:
   # Worker 已準備就緒，等待加入叢集
   - echo "K3s Worker node ready for manual join" > /tmp/k3s-install-status
   - echo "Run join command from master node" >> /tmp/k3s-install-status
+  - echo "SSH PasswordAuthentication enabled" >> /tmp/k3s-install-status
 
 write_files:
   - path: /tmp/join-cluster.sh
@@ -493,7 +533,7 @@ EOF
 #   - echo "K3s Worker node ready for manual join" > /tmp/k3s-install-status
 #   - echo "Run join command from master node" >> /tmp/k3s-install-status
 #   - echo "Optimized for ELK logging" >> /tmp/k3s-install-status
-EOF
+# EOF
     fi
 
     # 將 user-data 複製到 snippets 目錄
@@ -682,29 +722,55 @@ case $MODE in
         done
         
         echo ""
-        echo "📋 後續步驟:"
-        echo "1. 等待 3-5 分鐘讓所有 VM 完成 Cloud-Init 初始化"
-        echo "2. Master 節點 (${CREATED_VMS[0]}) 會自動安裝 K3s"
-        echo "3. Worker 節點需要手動加入叢集"
+        echo "📋 第三階段：自動配置完整 K3s 叢集..."
+        echo "等待 Master 節點完成 K3s 安裝..."
+        
+        # 等待 Master 節點的 K3s 完全準備就緒
+        MASTER_ID=${CREATED_VMS[0]}
+        echo "等待 Master 節點 (VM $MASTER_ID) K3s 服務啟動..."
+        
+        # 等待更長時間讓 Master 節點完成初始化
+        sleep 120  # 等待 2 分鐘
+        
+        # 檢查 Master 節點狀態並自動加入 Worker 節點
+        echo "檢查 Master 節點狀態並自動加入 Worker 節點..."
+        
+        # 等待並自動加入所有 Worker 節點
+        if [[ ${#CREATED_VMS[@]} -gt 1 ]]; then
+            echo "開始自動加入 Worker 節點到叢集..."
+            
+            for ((j=2; j<=COUNT; j++)); do
+                worker_id=$((START_ID + j - 1))
+                echo "[$((j-1))/$((COUNT-1))] 自動加入 Worker 節點 VM $worker_id..."
+                
+                # 使用 k3s-manager 自動加入
+                if ./k3s-manager.sh join $worker_id $MASTER_ID; then
+                    echo "✅ Worker 節點 VM $worker_id 已成功加入叢集"
+                else
+                    echo "⚠️  Worker 節點 VM $worker_id 加入失敗，可稍後手動重試"
+                fi
+                
+                # 短暫延遲
+                sleep 10
+            done
+            
+            echo ""
+            echo "🎉 完整 K3s 叢集自動部署完成！"
+            echo ""
+            echo "📊 最終叢集狀態檢查："
+            ./k3s-manager.sh list-nodes $MASTER_ID
+        else
+            echo "✅ 單節點 Master 部署完成！"
+        fi
+        
         echo ""
-        echo "🔧 加入 Worker 節點的步驟:"
-        echo "# 在 Master 節點取得 token"
-        echo "ssh ubuntu@<MASTER_IP> 'sudo cat /var/lib/rancher/k3s/server/node-token'"
-        echo ""
-        echo "# 在每個 Worker 節點執行"
+        echo "🛠️  如需手動管理叢集："
         for ((j=2; j<=COUNT; j++)); do
             worker_id=$((START_ID + j - 1))
-            echo "ssh ubuntu@<WORKER_${j}_IP> 'sudo /tmp/join-cluster.sh <MASTER_IP> <TOKEN>'"
+            echo "./k3s-manager.sh join $worker_id $MASTER_ID  # 重新加入 Worker $worker_id"
         done
-        echo ""
-        echo "🛠️  或使用管理工具自動加入："
-        for ((j=2; j<=COUNT; j++)); do
-            worker_id=$((START_ID + j - 1))
-            echo "./k3s-manager.sh join $worker_id ${CREATED_VMS[0]}"
-        done
-        echo ""
-        echo "✅ K3s 叢集部署完成後，可使用以下命令檢查狀態："
-        echo "./k3s-manager.sh status ${CREATED_VMS[0]}"
+        echo "./k3s-manager.sh status $MASTER_ID            # 檢查 Master 狀態"
+        echo "./k3s-manager.sh list-nodes $MASTER_ID        # 列出所有節點"
         echo ""
         echo "📊 如需部署 ELK Stack (未來功能)："
         echo "echo '等待 K3s 叢集穩定運行後，可考慮加入 ELK Stack 進行日誌管理'"

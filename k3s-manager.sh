@@ -5,6 +5,9 @@ set -e
 
 source $(dirname "$0")/config.sh
 
+# 設定 VM 密碼
+VM_PASSWORD="$CIPASSWORD"
+
 # 顯示使用說明
 show_help() {
     echo "K3s 叢集管理工具"
@@ -94,7 +97,7 @@ case "${1:-help}" in
         echo "=================================="
         
         # 檢查 SSH 連接
-        if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no ubuntu@$VM_IP "echo 'SSH OK'" 2>/dev/null; then
+        if sshpass -p "$VM_PASSWORD" ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no ubuntu@$VM_IP "echo 'SSH OK'" 2>/dev/null; then
             echo "✅ SSH 連接: 正常"
         else
             echo "❌ SSH 連接: 失敗"
@@ -102,11 +105,11 @@ case "${1:-help}" in
         fi
         
         # 檢查 K3s 服務
-        if ssh -o StrictHostKeyChecking=no ubuntu@$VM_IP "sudo systemctl is-active k3s" 2>/dev/null | grep -q "active"; then
+        if sshpass -p "$VM_PASSWORD" ssh -o StrictHostKeyChecking=no ubuntu@$VM_IP "sudo systemctl is-active k3s" 2>/dev/null | grep -q "active"; then
             echo "✅ K3s 服務: 執行中"
             
             # 檢查 kubectl
-            if ssh -o StrictHostKeyChecking=no ubuntu@$VM_IP "kubectl get nodes" 2>/dev/null; then
+            if sshpass -p "$VM_PASSWORD" ssh -o StrictHostKeyChecking=no ubuntu@$VM_IP "kubectl get nodes" 2>/dev/null; then
                 echo "✅ kubectl: 正常"
             else
                 echo "❌ kubectl: 失敗"
@@ -135,7 +138,7 @@ case "${1:-help}" in
         fi
         
         echo "取得 Master 節點 token (VM $MASTER_ID, IP: $MASTER_IP):"
-        TOKEN=$(ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "sudo cat /var/lib/rancher/k3s/server/node-token" 2>/dev/null)
+        TOKEN=$(sshpass -p "$VM_PASSWORD" ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "sudo cat /var/lib/rancher/k3s/server/node-token" 2>/dev/null)
         
         if [[ -n "$TOKEN" ]]; then
             echo "Token: $TOKEN"
@@ -173,7 +176,7 @@ case "${1:-help}" in
         echo "讓 Worker VM $WORKER_ID 加入 Master VM $MASTER_ID 的叢集..."
         
         # 取得 token
-        TOKEN=$(ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "sudo cat /var/lib/rancher/k3s/server/node-token" 2>/dev/null)
+        TOKEN=$(sshpass -p "$VM_PASSWORD" ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "sudo cat /var/lib/rancher/k3s/server/node-token" 2>/dev/null)
         if [[ -z "$TOKEN" ]]; then
             echo "[ERROR] 無法取得 Master token"
             exit 1
@@ -181,14 +184,14 @@ case "${1:-help}" in
         
         # 在 worker 節點執行加入命令
         echo "執行加入命令..."
-        if ssh -o StrictHostKeyChecking=no ubuntu@$WORKER_IP "curl -sfL https://get.k3s.io | K3S_URL=https://$MASTER_IP:6443 K3S_TOKEN=$TOKEN sh -" 2>/dev/null; then
+        if sshpass -p "$VM_PASSWORD" ssh -o StrictHostKeyChecking=no ubuntu@$WORKER_IP "curl -sfL https://get.k3s.io | K3S_URL=https://$MASTER_IP:6443 K3S_TOKEN=$TOKEN sh -" 2>/dev/null; then
             echo "✅ Worker 節點已成功加入叢集"
             
             # 等待一下然後檢查狀態
             sleep 10
             echo ""
             echo "叢集節點狀態:"
-            ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "kubectl get nodes" 2>/dev/null || echo "無法取得節點狀態"
+            sshpass -p "$VM_PASSWORD" ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "kubectl get nodes" 2>/dev/null || echo "無法取得節點狀態"
         else
             echo "❌ Worker 節點加入失敗"
             exit 1
@@ -215,7 +218,7 @@ case "${1:-help}" in
         
         echo "K3s 叢集節點列表 (Master: VM $MASTER_ID):"
         echo "========================================="
-        ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "kubectl get nodes -o wide" 2>/dev/null || echo "無法取得節點列表"
+        sshpass -p "$VM_PASSWORD" ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "kubectl get nodes -o wide" 2>/dev/null || echo "無法取得節點列表"
         ;;
     
     cleanup)
@@ -294,7 +297,7 @@ case "${1:-help}" in
         
         echo "K3s 服務日誌 (VM $VM_ID, IP: $VM_IP):"
         echo "===================================="
-        ssh -o StrictHostKeyChecking=no ubuntu@$VM_IP "sudo journalctl -u k3s -f --no-pager" 2>/dev/null || echo "無法取得日誌"
+        sshpass -p "$VM_PASSWORD" ssh -o StrictHostKeyChecking=no ubuntu@$VM_IP "sudo journalctl -u k3s -f --no-pager" 2>/dev/null || echo "無法取得日誌"
         ;;
     
     help|--help|-h)
