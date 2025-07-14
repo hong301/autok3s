@@ -2,7 +2,7 @@
 
 這是一個完整的 Proxmox VE 環境下 K3s Kubernetes 叢集自動化部署解決方案，支援單一和批次部署模式，內建叢集管理和驗證工具。
 
-> ⚡ **重要提醒**: 系統已配置強密碼 `FsI!^@#Zg` 和 SSH 金鑰雙重認證，部署後可使用 `ubuntu` 使用者登入所有節點。
+> ⚡ **重要提醒**: 系統已配置強密碼 `` 和 SSH 金鑰雙重認證，部署後可使用 `ubuntu` 使用者登入所有節點。
 
 ## 📚 目錄
 
@@ -166,7 +166,7 @@ nano config.sh
 STORAGE="local-lvm"     # Proxmox 儲存名稱 (使用 pvesm status 查看)
 NET_BRIDGE="vmbr0"      # 網路橋接名稱 (使用 ip link show 查看)
 CIUSER="ubuntu"         # Cloud-Init 使用者名稱
-CIPASSWORD="FsI!^@#Zg"  # Cloud-Init 密碼 (強密碼已設定)
+CIPASSWORD="password"  # Cloud-Init 密碼 (強密碼已設定)
 ```
 
 ### 5. 驗證 Proxmox 環境
@@ -570,10 +570,10 @@ ssh ubuntu@<VM_IP>
 
 # 方法2: 使用密碼登入
 ssh ubuntu@<VM_IP>
-# 密碼: FsI!^@#Zg
+# 密碼: Password
 
 # 方法3: 使用 sshpass 自動化
-sshpass -p 'FsI!^@#Zg' ssh ubuntu@<VM_IP>
+sshpass -p 'Password' ssh ubuntu@<VM_IP>
 
 # 測試範例 (假設 Master 節點 IP 為 10.110.0.70)
 ssh ubuntu@10.110.0.70 'hostname && kubectl get nodes'
@@ -581,7 +581,7 @@ ssh ubuntu@10.110.0.70 'hostname && kubectl get nodes'
 
 **登入資訊**:
 - 使用者名稱: `ubuntu`
-- 密碼: `FsI!^@#Zg`
+- 密碼: `Password`
 - SSH 密碼認證: ✅ 已啟用
 - SSH 金鑰認證: ✅ 已配置
 
@@ -783,7 +783,7 @@ ssh ubuntu@<VM_IP> 'htop'
 
 ### 已實施的安全措施
 
-- ✅ 強密碼設定 (`FsI!^@#Zg`)
+- ✅ 強密碼設定 (`Password`)
 - ✅ SSH 金鑰認證
 - ✅ 密碼和金鑰雙重認證
 - ✅ 防火牆友善配置
