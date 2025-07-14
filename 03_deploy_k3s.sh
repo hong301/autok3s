@@ -145,13 +145,15 @@ create_vm() {
     fi
     
     # 1. Clone from template
-    echo "從範本 $TEMPLATE_ID 複製 VM..."
+    echo "[進度 1/6] 從範本 $TEMPLATE_ID 複製 VM..."
     if ! qm clone $TEMPLATE_ID $vm_id --name $vm_name --full; then
         echo "[ERROR] 複製範本失敗"
         return 1
     fi
+    echo "[SUCCESS] VM 複製完成"
     
     # 2. 依節點類型升級硬體配置
+    echo "[進度 2/6] 設定硬體配置..."
     if [[ "$node_type" == "master" ]]; then
         echo "升級 Master 硬體配置 (CPU: 4, 記憶體: 4GB, 磁碟: 20GB)..."
         if ! qm set $vm_id --cores 4 --memory 4096; then
@@ -160,6 +162,7 @@ create_vm() {
             return 1
         fi
         DISK_EXPAND="+18G"  # 擴展到 20GB
+        echo "[SUCCESS] Master 硬體配置完成"
         
         # ELK Stack 配置 (預留，暫時註解)
         # echo "升級 Master 硬體配置 (CPU: 4, 記憶體: 8GB, 磁碟: 30GB) - 適合 ELK Stack..."
@@ -177,93 +180,167 @@ create_vm() {
             return 1
         fi
         DISK_EXPAND="+13G"  # 擴展到 15GB
+        echo "[SUCCESS] Worker 硬體配置完成"
     fi
     
     # 擴展磁碟空間
+    echo "[進度 3/6] 擴展磁碟空間..."
     if ! qm disk resize $vm_id scsi0 $DISK_EXPAND; then
         echo "[WARNING] 磁碟擴展失敗，繼續使用預設大小"
+    else
+        echo "[SUCCESS] 磁碟擴展完成"
     fi
     
     # 3. 設定網路、cloud-init 參數
-    echo "設定 VM 參數..."
+    echo "[進度 4/6] 設定 VM 網路參數..."
     if ! qm set $vm_id --net0 virtio,bridge=$NET_BRIDGE; then
         echo "[ERROR] 設定網路失敗"
         cleanup_failed_vm $vm_id
         return 1
     fi
+    echo "[SUCCESS] 網路設定完成"
     
-    if ! qm set $vm_id --ciuser $CIUSER --cipassword $CIPASSWORD --ipconfig0 ip=dhcp; then
+    # 清除可能的舊 ciuser/cipassword 設定，使用 Cloud-Init YAML 完全控制
+    echo "清除舊的 Cloud-Init 設定..."
+    qm set $vm_id --delete ciuser,cipassword 2>/dev/null || true
+    
+    if ! qm set $vm_id --ipconfig0 ip=dhcp; then
         echo "[ERROR] 設定 Cloud-Init 參數失敗"
         cleanup_failed_vm $vm_id
         return 1
     fi
+    echo "[SUCCESS] Cloud-Init 基本設定完成"
     
     # 啟用 QEMU Guest Agent
+    echo "啟用 QEMU Guest Agent..."
     qm set $vm_id --agent enabled=1
+    echo "[SUCCESS] Guest Agent 設定完成"
     
     # 3. 設定 cloud-init 自動安裝 K3s
+    echo "[進度 5/6] 建立 Cloud-Init 配置檔案..."
     if [[ "$node_type" == "master" ]]; then
-        # Master 節點配置 - 基本 K3s 安裝
+        # Master 節點配置 - 使用簡潔的 Cloud-Init YAML
         cat > k3s-user-data-${vm_id}.yaml <<EOF
 #cloud-config
 hostname: $vm_name
-package_update: true
-package_upgrade: true
-packages:
-  - curl
-  - snapd
-  - qemu-guest-agent
-  - jq
-  - htop
-  - git
-# 啟用密碼認證
-ssh_pwauth: true
-password: FsI!^@#Zg
-chpasswd:
-  expire: false
-# 設定 ubuntu 使用者
 users:
   - name: ubuntu
-    passwd: \$6\$rounds=4096\$saltsalt\$VkNkOKCVF7H0xBGrW8xtOy9z/nxd1mGXe7k8LIy4E9xNnxqK0KxU8Qz7x4P9LbGz5S9zV8YxQfRZ8nC5MzU9
+    sudo: ALL=(ALL) NOPASSWD:ALL
     lock_passwd: false
-    sudo: ['ALL=(ALL) NOPASSWD:ALL']
-    groups: sudo
+    plain_text_passwd: "FsI!^@#Zg"
     shell: /bin/bash
     ssh_authorized_keys:
       - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDfWp/8zoAlxO4N8fUnXoknIltAZk35so+JRcB+G95Z00NllcGKJT4ViRhaKX+Y728/abqu9y7twx/ywRGUnce9JqL+L1acv3aiKVcQDn2b5TyyZ73roU7KG3J3c3eGIKQ+dSO1/Ya498KPIh8grQMAjBYXBtBTqsFhOFxjacVCzKnS1QX0Rs8ryfyNB8L8B7rcoD5gB/WmMxuUINZAc6nZaN/4gbonb7FALNDt/FN916qu6wikA5/8rj2Iml09X6PDptPD6N8FBsZSzRas5NPpBt0++4zKmVyUAL2OatIvcnUIL16lREezFq6ENDsZGsM+tGL05pU+1AvLMeZmdp86isd7Zr71Y6wq4GD9L75PuyKyIhTBVHQ25mMgH/0Fduqr2n6ebEjZUsis/hkZMl0etvvwwnKQP10fm5sQFEkAxYw10xzeCtivQhvAdekeHmcDAFMgWiTj0ELfmyMEr/Xdot9bo3fC1FdkiZVXQT2WVAbgB15RHUKK2joMiA4gLmEuJ4ltCFSHC2ovCco58KbN93saM9LUw1Gt+Kb6gAmzz+zLBq7fc1/QET3dk6WhwnrkGBxGHZ9QYfZnP+AFHZywQq7gM+Yd0/ixipQJKGfraxFPBCX5yKuMBJenOtg9GQj+s3jZsOv3NMIX1JMrM7EjNxyYC8ovJSaRqHNjn5KPNw== root@devops
+
+chpasswd:
+  expire: false
+
+package_update: true
+packages:
+  - curl
+  - qemu-guest-agent
+  - jq
+  - htop
+
 runcmd:
+  # 啟用密碼登入
+  - sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+  - systemctl restart ssh
+  # 啟用 Guest Agent
   - systemctl enable qemu-guest-agent
   - systemctl start qemu-guest-agent
+  # 擴展磁碟
   - resize2fs /dev/sda1 || true
-  # 確保 SSH 密碼認證啟用
-  - sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
-  - sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/g' /etc/ssh/sshd_config
-  - sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/g' /etc/ssh/sshd_config
-  - systemctl restart ssh
   # 安裝 K3s
   - curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
-  - mkdir -p /home/ubuntu/.kube
-  - cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
-  - chown ubuntu:ubuntu /home/ubuntu/.kube/config
-  - sleep 30
-  - export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-  # 基礎設定
-  - kubectl create namespace cert-manager || true
-  - kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.crds.yaml || true
-  # 安裝 Helm
-  - snap install helm --classic
-  - helm repo add jetstack https://charts.jetstack.io
-  - helm repo update
-  # 安裝 cert-manager
-  - helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace || true
-  - echo "K3s Master installation completed" > /tmp/k3s-install-status
-  - echo "Node token: \$(cat /var/lib/rancher/k3s/server/node-token)" >> /tmp/k3s-install-status
+  # 只啟用 k3s-setup 服務，讓它在 K3s 完成後自動執行
+  - systemctl enable k3s-setup
+
 write_files:
   - path: /tmp/get-join-command.sh
     permissions: '0755'
     content: |
       #!/bin/bash
       echo "curl -sfL https://get.k3s.io | K3S_URL=https://\$(hostname -I | awk '{print \$1}'):6443 K3S_TOKEN=\$(cat /var/lib/rancher/k3s/server/node-token) sh -"
+  - path: /etc/systemd/system/k3s-setup.service
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=K3s Post-Installation Setup
+      After=k3s.service
+      Wants=k3s.service
+      
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/opt/k3s-setup.sh
+      User=root
+      
+      [Install]
+      WantedBy=multi-user.target
+  - path: /opt/k3s-setup.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      echo "Starting K3s post-installation setup..." > /tmp/k3s-setup.log
+      
+      # 等待 K3s 服務完全啟動
+      for i in {1..60}; do
+        if systemctl is-active --quiet k3s && [ -f /etc/rancher/k3s/k3s.yaml ]; then
+          echo "K3s service is ready" >> /tmp/k3s-setup.log
+          break
+        fi
+        echo "Waiting for K3s to be ready... ($i/60)" >> /tmp/k3s-setup.log
+        sleep 5
+      done
+      
+      # 檢查 K3s 是否真的準備好了
+      if ! systemctl is-active --quiet k3s || [ ! -f /etc/rancher/k3s/k3s.yaml ]; then
+        echo "ERROR: K3s failed to start properly" >> /tmp/k3s-setup.log
+        exit 1
+      fi
+      
+      # 設定 kubectl 配置給 ubuntu 使用者
+      mkdir -p /home/ubuntu/.kube
+      cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
+      chown ubuntu:ubuntu /home/ubuntu/.kube/config
+      echo "kubectl config copied" >> /tmp/k3s-setup.log
+      
+      # 等待 K3s API 可用
+      export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+      for i in {1..30}; do
+        if kubectl get nodes &>/dev/null; then
+          echo "K3s API is ready" >> /tmp/k3s-setup.log
+          break
+        fi
+        echo "Waiting for K3s API... ($i/30)" >> /tmp/k3s-setup.log
+        sleep 10
+      done
+      
+      # 安裝 Helm
+      if ! command -v helm &> /dev/null; then
+        snap install helm --classic
+        echo "Helm installed" >> /tmp/k3s-setup.log
+      fi
+      
+      # 基礎設定
+      kubectl create namespace cert-manager || true
+      kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.crds.yaml || true
+      
+      # 設定 Helm repositories
+      helm repo add jetstack https://charts.jetstack.io
+      helm repo update
+      
+      # 安裝 cert-manager
+      helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace || true
+      
+      # 記錄完成狀態
+      echo "K3s Master installation completed" > /tmp/k3s-install-status
+      if [ -f /var/lib/rancher/k3s/server/node-token ]; then
+        echo "Node token: $(cat /var/lib/rancher/k3s/server/node-token)" >> /tmp/k3s-install-status
+      fi
+      echo "Setup completed at $(date)" >> /tmp/k3s-setup.log
+EOF
 
 # ELK Stack 配置 (預留，暫時註解)
 # #cloud-config
@@ -337,45 +414,42 @@ write_files:
 #       [ELK values content...]
 EOF
     else
-        # Worker 節點配置 - 基本配置
+        # Worker 節點配置 - 使用簡潔的 Cloud-Init YAML
         cat > k3s-user-data-${vm_id}.yaml <<EOF
 #cloud-config
 hostname: $vm_name
+users:
+  - name: ubuntu
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: false
+    plain_text_passwd: "FsI!^@#Zg"
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDfWp/8zoAlxO4N8fUnXoknIltAZk35so+JRcB+G95Z00NllcGKJT4ViRhaKX+Y728/abqu9y7twx/ywRGUnce9JqL+L1acv3aiKVcQDn2b5TyyZ73roU7KG3J3c3eGIKQ+dSO1/Ya498KPIh8grQMAjBYXBtBTqsFhOFxjacVCzKnS1QX0Rs8ryfyNB8L8B7rcoD5gB/WmMxuUAL2OatIvcnUIL16lREezFq6ENDsZGsM+tGL05pU+1AvLMeZmdp86isd7Zr71Y6wq4GD9L75PuyKyIhTBVHQ25mMgH/0Fduqr2n6ebEjZUsis/hkZMl0etvvwwnKQP10fm5sQFEkAxYw10xzeCtivQhvAdekeHmcDAFMgWiTj0ELfmyMEr/Xdot9bo3fC1FdkiZVXQT2WVAbgB15RHUKK2joMiA4gLmEuJ4ltCFSHC2ovCco58KbN93saM9LUw1Gt+Kb6gAmzz+zLBq7fc1/QET3dk6WhwnrkGBxGHZ9QYfZnP+AFHZywQq7gM+Yd0/ixipQJKGfraxFPBCX5yKuMBJenOtg9GQj+s3jZsOv3NMIX1JMrM7EjNxyYC8ovJSaRqHNjn5KPNw== root@devops
+
+chpasswd:
+  expire: false
+
 package_update: true
-package_upgrade: true
 packages:
   - curl
-  - snapd
   - qemu-guest-agent
   - jq
   - htop
-  - git
-# 啟用密碼認證
-ssh_pwauth: true
-password: FsI!^@#Zg
-chpasswd:
-  expire: false
-# 設定 ubuntu 使用者
-users:
-  - name: ubuntu
-    passwd: \$6\$rounds=4096\$saltsalt\$VkNkOKCVF7H0xBGrW8xtOy9z/nxd1mGXe7k8LIy4E9xNnxqK0KxU8Qz7x4P9LbGz5S9zV8YxQfRZ8nC5MzU9
-    lock_passwd: false
-    sudo: ['ALL=(ALL) NOPASSWD:ALL']
-    groups: sudo
-    shell: /bin/bash
-    ssh_authorized_keys:
-      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDfWp/8zoAlxO4N8fUnXoknIltAZk35so+JRcB+G95Z00NllcGKJT4ViRhaKX+Y728/abqu9y7twx/ywRGUnce9JqL+L1acv3aiKVcQDn2b5TyyZ73roU7KG3J3c3eGIKQ+dSO1/Ya498KPIh8grQMAjBYXBtBTqsFhOFxjacVCzKnS1QX0Rs8ryfyNB8L8B7rcoD5gB/WmMxuUINZAc6nZaN/4gbonb7FALNDt/FN916qu6wikA5/8rj2Iml09X6PDptPD6N8FBsZSzRas5NPpBt0++4zKmVyUAL2OatIvcnUIL16lREezFq6ENDsZGsM+tGL05pU+1AvLMeZmdp86isd7Zr71Y6wq4GD9L75PuyKyIhTBVHQ25mMgH/0Fduqr2n6ebEjZUsis/hkZMl0etvvwwnKQP10fm5sQFEkAxYw10xzeCtivQhvAdekeHmcDAFMgWiTj0ELfmyMEr/Xdot9bo3fC1FdkiZVXQT2WVAbgB15RHUKK2joMiA4gLmEuJ4ltCFSHC2ovCco58KbN93saM9LUw1Gt+Kb6gAmzz+zLBq7fc1/QET3dk6WhwnrkGBxGHZ9QYfZnP+AFHZywQq7gM+Yd0/ixipQJKGfraxFPBCX5yKuMBJenOtg9GQj+s3jZsOv3NMIX1JMrM7EjNxyYC8ovJSaRqHNjn5KPNw== root@devops
+
 runcmd:
+  # 啟用密碼登入
+  - sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+  - systemctl restart ssh
+  # 啟用 Guest Agent
   - systemctl enable qemu-guest-agent
   - systemctl start qemu-guest-agent
+  # 擴展磁碟
   - resize2fs /dev/sda1 || true
-  # 確保 SSH 密碼認證啟用
-  - sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
-  - sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/g' /etc/ssh/sshd_config
-  - sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/g' /etc/ssh/sshd_config
-  - systemctl restart ssh
+  # Worker 已準備就緒，等待加入叢集
   - echo "K3s Worker node ready for manual join" > /tmp/k3s-install-status
   - echo "Run join command from master node" >> /tmp/k3s-install-status
+
 write_files:
   - path: /tmp/join-cluster.sh
     permissions: '0755'
@@ -391,6 +465,7 @@ write_files:
       TOKEN=\$2
       curl -sfL https://get.k3s.io | K3S_URL=https://\${MASTER_IP}:6443 K3S_TOKEN=\${TOKEN} sh -
       echo "Worker joined cluster successfully."
+EOF
 
 # ELK 支援配置 (預留，暫時註解)
 # #cloud-config
@@ -422,13 +497,16 @@ EOF
     fi
 
     # 將 user-data 複製到 snippets 目錄
+    echo "複製 Cloud-Init 配置到 Proxmox snippets 目錄..."
     if ! cp k3s-user-data-${vm_id}.yaml /var/lib/vz/snippets/; then
         echo "[ERROR] 複製 user-data 失敗"
         rm -f k3s-user-data-${vm_id}.yaml
         cleanup_failed_vm $vm_id
         return 1
     fi
+    echo "[SUCCESS] Cloud-Init 配置檔案複製完成"
     
+    echo "設定 VM 使用自訂 Cloud-Init 配置..."
     if ! qm set $vm_id --cicustom "user=local:snippets/k3s-user-data-${vm_id}.yaml"; then
         echo "[ERROR] 設定 Cloud-Init 自訂檔案失敗"
         rm -f k3s-user-data-${vm_id}.yaml
@@ -436,19 +514,22 @@ EOF
         cleanup_failed_vm $vm_id
         return 1
     fi
+    echo "[SUCCESS] VM Cloud-Init 自訂配置設定完成"
     
     # 清理本地的 user-data 檔案
     rm -f k3s-user-data-${vm_id}.yaml
     
     # 4. 啟動新 VM（不等待完成）
-    echo "啟動 VM $vm_id..."
+    echo "[進度 6/6] 啟動 VM $vm_id..."
     if ! qm start $vm_id; then
         echo "[ERROR] 啟動 VM 失敗"
         cleanup_failed_vm $vm_id
         return 1
     fi
     
-    echo "[SUCCESS] VM $vm_id ($vm_name) 已建立並啟動。"
+    echo "[SUCCESS] ✅ VM $vm_id ($vm_name) 已建立並啟動。"
+    echo "[INFO] 🔄 VM 正在初始化，Cloud-Init 正在配置系統..."
+    echo "[INFO] 📝 登入資訊: ssh ubuntu@<VM_IP> (密碼: FsI!^@#Zg)"
     return 0
 }
 
@@ -644,4 +725,4 @@ echo ""
 echo "💡 提示："
 echo "- 使用 'qm list' 查看所有 VM"
 echo "- 使用 'qm guest cmd <VM_ID> network-get-interfaces' 取得 VM IP"
-echo "- SSH 登入資訊: ubuntu / $CIPASSWORD"
+echo "- SSH 登入資訊: ubuntu / FsI!^@#Zg"
